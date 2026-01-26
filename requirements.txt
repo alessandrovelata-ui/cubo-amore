@@ -3,6 +3,5 @@ pandas
 google-generativeai
 gspread
 oauth2client
-streamlit-gsheets
 requests
 pyTelegramBotAPI
