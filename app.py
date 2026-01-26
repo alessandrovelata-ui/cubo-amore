@@ -6,7 +6,6 @@ from google.oauth2.service_account import Credentials
 import requests
 import json
 import agente_ia
-import random
 
 # --- CONFIGURAZIONE ---
 st.set_page_config(page_title="Cubo Amore", page_icon="❤️", layout="centered")
@@ -56,20 +55,20 @@ def salva_log(mood):
         ws.append_row([datetime.now().strftime("%Y-%m-%d"), datetime.now().strftime("%H:%M"), mood])
     except: pass
 
-# --- FUNZIONE: LEGGI UNA VOLTA E BRUCIA 🔥 ---
+# --- FUNZIONE: SEGNA COME LETTO ---
 def segna_messaggio_letto(sh, riga_index):
     try:
         ws = sh.worksheet("Contenuti")
-        # Aggiorna la cella Mood (colonna 1) da "Manuale" a "Manuale_Letto"
         ws.update_cell(riga_index, 1, "Manuale_Letto")
     except Exception as e:
-        print(f"Errore aggiornamento DB: {e}")
+        print(f"Errore DB: {e}")
 
-# --- OVERRIDE TELEGRAM (SOLO PER BUONGIORNO) ---
+# --- OVERRIDE TELEGRAM ---
 def check_telegram_override(df_contenuti):
     try:
         oggi_str = datetime.now().strftime("%Y-%m-%d")
         if not df_contenuti.empty and 'Data_Specifica' in df_contenuti.columns:
+             # Se esiste già un manuale per oggi, stop
              check = df_contenuti[
                  (df_contenuti['Mood'].str.contains('Manuale')) & 
                  (df_contenuti['Data_Specifica'].astype(str) == oggi_str)
@@ -78,7 +77,6 @@ def check_telegram_override(df_contenuti):
         
         token = st.secrets["TELEGRAM_TOKEN"]
         admin_id = str(st.secrets["TELEGRAM_CHAT_ID"])
-        
         url = f"https://api.telegram.org/bot{token}/getUpdates"
         resp = requests.get(url).json()
         
@@ -101,30 +99,30 @@ def check_telegram_override(df_contenuti):
     except: pass
 
 # --- RECUPERO CONTENUTI ---
-def get_contenuto(mood_target, date_check=None):
+def get_contenuto(mood_target):
     try:
         sh = connect_db()
         ws = sh.worksheet("Contenuti")
         df = pd.DataFrame(ws.get_all_records())
-        oggi = (date_check if date_check else datetime.now()).strftime("%Y-%m-%d")
+        oggi = datetime.now().strftime("%Y-%m-%d")
         
         if 'Data_Specifica' in df.columns:
             df['Data_Specifica'] = df['Data_Specifica'].astype(str)
         
-        # 1. CONTROLLO TELEGRAM
-        if mood_target == "Buongiorno" and not date_check:
+        # 1. CONTROLLO TELEGRAM (Solo su Buongiorno)
+        if mood_target == "Buongiorno":
             check_telegram_override(df)
-            df = pd.DataFrame(ws.get_all_records())
+            df = pd.DataFrame(ws.get_all_records()) # Ricarica
             if 'Data_Specifica' in df.columns: df['Data_Specifica'] = df['Data_Specifica'].astype(str)
 
-        # 2. CERCA MESSAGGIO MANUALE (Solo per Buongiorno)
+        # 2. MESSAGGIO MANUALE (Solo su Buongiorno)
         if mood_target == "Buongiorno":
             indices = df.index[(df['Mood'] == 'Manuale') & (df['Data_Specifica'] == oggi)].tolist()
             if indices:
                 idx = indices[-1]
                 messaggio = df.iloc[idx]['Link_Testo']
-                if not date_check:
-                    segna_messaggio_letto(sh, idx + 2) 
+                # Segna come letto
+                segna_messaggio_letto(sh, idx + 2) 
                 return messaggio
 
         # 3. AUTOMATICO
@@ -139,9 +137,9 @@ def get_contenuto(mood_target, date_check=None):
     except Exception as e:
         return f"Amore infinito ❤️ ({str(e)})"
 
-# --- LOGICA EVENTI CON CITAZIONE E COUNTER ---
-def check_special_event(date_check=None):
-    now = date_check if date_check else datetime.now()
+# --- CALENDARIO EVENTI ---
+def check_special_event():
+    now = datetime.now()
     start_date = datetime(2022, 2, 14, 0, 0, 0)
     
     delta = now - start_date
@@ -155,21 +153,20 @@ def check_special_event(date_check=None):
     if now.day < start_date.day: mesi_diff -= 1
     mesi_reali = mesi_diff % 12
     
-    # 1. ANNIVERSARIO (14 Febbraio)
+    # ANNIVERSARIO
     if now.month == 2 and now.day == 14:
         citazione = "\n\n\"Tu sei ogni ragione, ogni speranza e ogni sogno che abbia mai avuto.\" – Le pagine della nostra vita"
         msg = f"Buon Anniversario! ❤️\n{anni} anni di Noi.{citazione}"
-        # Counter con GIORNI e ORE
-        counter = f"Per la precisione: {giorni_totali} giorni e {ore_totali} ore insieme!"
+        counter = f"Esattamente: {giorni_totali} giorni e {ore_totali} ore insieme!"
         return "🎉 Anniversario", msg, counter
         
-    # 2. MESIVERSARIO
+    # MESIVERSARIO
     if now.day == 14:
         msg = f"Buon Mesiversario! 🌹\n{anni} Anni e {mesi_reali} Mesi."
-        counter = f"Il contatore segna: {giorni_totali} giorni totali di noi."
+        counter = f"Il contatore segna: {giorni_totali} giorni totali."
         return "🌹 Mesiversario", msg, counter
 
-    # 3. ALTRE DATE
+    # ALTRI EVENTI
     if now.month == 4 and now.day == 12:
         return "🎂 Buon Compleanno!", "Tanti auguri al mio Sole! Sei il regalo più bello.", None
     if now.month == 6 and now.day in [20, 21]:
@@ -181,7 +178,7 @@ def check_special_event(date_check=None):
         
     return None, None, None
 
-# --- INTERFACCIA ---
+# --- UI ---
 query_params = st.query_params
 mode = query_params.get("mode", "daily")
 
@@ -189,38 +186,11 @@ if mode == "admin":
     st.markdown("### 🛠️ Centro di Controllo")
     pwd = st.text_input("Password", type="password")
     if pwd == "1234":
-        
-        st.write("### 🏗️ Azioni Reali")
-        if st.button("🚀 Genera Mese Reale (Da Oggi)"):
-            with st.spinner("Generazione in corso..."):
-                report = agente_ia.run_agent(weeks=4)
+        if st.button("🚀 GENERA CONTENUTI MESE (Start: Oggi)"):
+            with st.spinner("Generazione ottimizzata in corso..."):
+                report = agente_ia.run_agent()
                 st.write(report)
-                st.success("Fatto!")
-
-        st.divider()
-        st.write("### 🧪 Area Test / Simulazione")
-        if st.button("🌹 SIMULA SETTIMANA 14 FEBBRAIO 2026"):
-            data_test = datetime(2026, 2, 14, 9, 0, 0)
-            st.info(f"⏳ Avvio simulazione al: {data_test.strftime('%d-%m-%Y')}...")
-            
-            with st.spinner("Creo il futuro..."):
-                agente_ia.run_agent(weeks=1, data_start=data_test)
-            
-            st.success("✅ DB Aggiornato. Ecco l'anteprima:")
-            for i in range(7):
-                giorno_corrente = data_test + timedelta(days=i)
-                data_str = giorno_corrente.strftime("%d-%m-%Y")
-                titolo, msg, counter = check_special_event(giorno_corrente)
-                frase_db = get_contenuto("Buongiorno", giorno_corrente)
-                
-                with st.expander(f"📅 {data_str}"):
-                    if titolo:
-                        st.markdown(f"**🌟 EVENTO:** {titolo}")
-                        st.code(f"{msg}")
-                        if counter: st.code(f"Counter: {counter}")
-                    else:
-                        st.markdown("**☀️ Normale:**")
-                        st.write(f"Frase: *{frase_db}*")
+                st.success("Operazione completata!")
 
 elif mode == "daily":
     st.title("☀️")
