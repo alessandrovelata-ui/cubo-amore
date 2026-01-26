@@ -7,16 +7,10 @@ import json
 import streamlit as st
 import time
 from datetime import datetime, timedelta
-import locale
-
-# Proviamo a impostare l'italiano per i nomi dei giorni (es. Lunedì)
-try:
-    locale.setlocale(locale.LC_TIME, 'it_IT.utf8')
-except:
-    pass # Se non ce l'ha, userà l'inglese o default, non importa
+import random
 
 def run_agent():
-    # --- SETUP CREDENZIALI ---
+    # --- SETUP ---
     try:
         GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
         creds_dict = json.loads(st.secrets["GOOGLE_SHEETS_JSON"])
@@ -27,89 +21,85 @@ def run_agent():
 
     genai.configure(api_key=GEMINI_KEY)
     
+    # CONNESSIONE DB
     scope = ["https://spreadsheets.google.com/feeds",'https://www.googleapis.com/auth/drive']
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
     sheet = client.open("CuboAmoreDB").worksheet("Contenuti")
     
-    # Leggiamo i dati esistenti per dare contesto
-    dati = pd.DataFrame(sheet.get_all_records())
+    # --- MEMORIA (Anti-Repetizione) ---
+    # Scarichiamo tutto il DB per controllare i duplicati
+    df = pd.DataFrame(sheet.get_all_records())
+    frasi_usate_recenti = []
+    
+    if not df.empty and 'Link_Testo' in df.columns:
+        # Prendiamo le ultime 100 frasi (circa 1 mese di storico abbondante)
+        frasi_usate_recenti = df['Link_Testo'].tail(150).tolist()
+
     model = genai.GenerativeModel('gemini-2.5-flash')
     report = []
-
-    # --- FASE 1: GENERAZIONE DEI 7 BUONGIORNO (Uno per giorno) ---
+    
+    # Lista dei Mood da generare
+    moods = ["Buongiorno", "Triste", "Felice", "Nostalgica", "Stressata"]
+    
     oggi = datetime.now()
-    
-    for i in range(7):
-        # Calcoliamo la data: Oggi, Domani, Dopodomani...
-        data_target = oggi + timedelta(days=i)
-        data_str = data_target.strftime("%Y-%m-%d")
-        nome_giorno = data_target.strftime("%A") # Es. Lunedì, Martedì...
-        
-        # Recupera esempi vecchi
-        if not dati.empty and 'Mood' in dati.columns:
-            esempi = dati[dati['Mood'] == 'Buongiorno']['Link_Testo'].tail(3).tolist()
-        else:
-            esempi = ["Buongiorno amore", "Svegliarmi con te è un sogno"]
 
-        prompt = f"""
-        Scrivi una frase di BUONGIORNO per la mia ragazza.
-        
-        CONTESTO: Deve essere specifica per il giorno: {nome_giorno}.
-        DATA: {data_str}
-        STILE: Breve (max 15 parole), dolce, motivante.
-        ESEMPI STILE: {esempi}
-
-        REGOLE:
-        1. Rispondi SOLO con il testo della frase.
-        2. Niente virgolette, elenchi o commenti.
-        """
-        
+    for m in moods:
         try:
-            response = model.generate_content(prompt)
-            frase_pulita = response.text.strip().replace('"', '').replace('*', '').split('\n')[0]
+            # --- COSTRUZIONE DEL PROMPT INTELLIGENTE ---
+            # Chiediamo 7 frasi in un colpo solo (Batch) per risparmiare richieste API
             
-            # SALVIAMO CON LA DATA SPECIFICA!
-            # Mood, Tipo, Testo, Data_Specifica
-            sheet.append_row(["Buongiorno", "Frase", frase_pulita, data_str])
-            report.append(f"✅ Buongiorno del {data_str} ({nome_giorno}): {frase_pulita}")
-            
-            time.sleep(15) # Pausa obbligatoria
-            
-        except Exception as e:
-            report.append(f"❌ Errore Buongiorno {data_str}: {e}")
-            time.sleep(15)
-
-    # --- FASE 2: RIMPOLPARE I MOOD (1 nuovo per tipo a settimana) ---
-    moods_extra = ["Triste", "Felice", "Nostalgica", "Stressata"]
-    
-    for m in moods_extra:
-        try:
-            # Recupera esempi
-            if not dati.empty and 'Mood' in dati.columns:
-                esempi = dati[dati['Mood'] == m]['Link_Testo'].tail(3).tolist()
-            else:
-                esempi = ["Ti amo", "Coraggio"]
-
             prompt = f"""
-            Scrivi una frase per la mia ragazza.
-            MOOD LEI: {m}
-            STILE: Breve (max 15 parole), empatica.
-            ESEMPI: {esempi}
-            REGOLE: Solo testo, niente commenti.
+            Agisci come un fidanzato innamorato e colto.
+            Il tuo compito è generare una lista JSON di 7 frasi diverse per il mood: {m}.
+            
+            REGOLE DI CONTENUTO:
+            - Totale frasi: 7
+            - 5 frasi devono essere pensieri tuoi, dolci e diretti (max 15 parole).
+            - 2 frasi DEVONO essere citazioni celebri (Film, Canzoni, Poesie, Libri) coerenti col mood.
+              Per le citazioni: metti la frase tra virgolette e l'autore/fonte alla fine.
+              Esempio citazione: "L'amor che move il sole e l'altre stelle." (Dante)
+            
+            REGOLE DI MEMORIA:
+            - NON generare frasi uguali o troppo simili a queste usate di recente: {str(frasi_usate_recenti[-20:])}
+            
+            FORMATO OUTPUT RICHIESTO (Solo JSON Array puro, nient'altro):
+            ["Frase 1...", "Frase 2...", "Frase 3 (Citazione)...", ...]
             """
-            
+
             response = model.generate_content(prompt)
-            frase_pulita = response.text.strip().replace('"', '').replace('*', '').split('\n')[0]
             
-            # Qui la data la lasciamo vuota, così vale "per sempre"
-            sheet.append_row([m, "Frase", frase_pulita, ""])
-            report.append(f"✅ Mood {m}: {frase_pulita}")
+            # Pulizia e Parsing del JSON
+            text_resp = response.text.strip()
+            # A volte Gemini mette ```json all'inizio, lo togliamo
+            if "```" in text_resp:
+                text_resp = text_resp.replace("```json", "").replace("```", "")
             
+            lista_frasi = json.loads(text_resp)
+            
+            # --- SALVATAGGIO ---
+            count = 0
+            for i, frase in enumerate(lista_frasi):
+                # Controllo Duplicati Python-Side (Sicurezza extra)
+                if frase in frasi_usate_recenti:
+                    continue # Salta se esiste già
+                
+                # Se è Buongiorno, assegniamo una data specifica
+                data_str = ""
+                if m == "Buongiorno":
+                    data_target = oggi + timedelta(days=count) # Usa count invece di i per non saltare giorni se ci sono duplicati
+                    data_str = data_target.strftime("%Y-%m-%d")
+                
+                sheet.append_row([m, "Frase", frase, data_str])
+                count += 1
+            
+            report.append(f"✅ {m}: Generate {count} nuove frasi (incluse citazioni).")
+            
+            # Pausa di sicurezza per il Rate Limit
             time.sleep(15)
             
         except Exception as e:
-            report.append(f"❌ Errore Mood {m}: {e}")
+            report.append(f"❌ Errore generazione {m}: {e}")
             time.sleep(15)
 
     return report
