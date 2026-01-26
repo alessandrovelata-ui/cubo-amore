@@ -56,41 +56,71 @@ def analizza_e_salva_stats(client):
     except Exception as e:
         return f"\n⚠️ Errore statistiche: {e}"
 
-# --- FUNZIONE: TROVA PROSSIMA DATA ---
-def trova_data_start(sheet):
-    """
-    Legge il foglio e trova l'ultima data inserita per il Buongiorno.
-    Ritorna: L'ultima data + 1 giorno.
-    Se vuoto: Ritorna Oggi.
-    """
+# --- GESTIONE FOGLI E DATE ---
+def setup_fogli(client):
+    """Crea i fogli se non esistono"""
+    db = client.open("CuboAmoreDB")
+    
+    # Foglio Calendario (Buongiorno)
     try:
-        df = pd.DataFrame(sheet.get_all_records())
+        ws_cal = db.worksheet("Calendario")
+    except:
+        ws_cal = db.add_worksheet(title="Calendario", rows=1000, cols=5)
+        ws_cal.append_row(["Data", "Mood", "Frase", "Tipo", "Marker"]) # Intestazione
         
-        # Se il DF è vuoto o non ha le colonne giuste
-        if df.empty or 'Data_Specifica' not in df.columns or 'Mood' not in df.columns:
+    # Foglio Emozioni (Random)
+    try:
+        ws_emo = db.worksheet("Emozioni")
+    except:
+        ws_emo = db.add_worksheet(title="Emozioni", rows=1000, cols=4)
+        ws_emo.append_row(["Mood", "Frase", "Tipo"]) # Intestazione
+        
+    return ws_cal, ws_emo
+
+def trova_data_start(ws_cal):
+    try:
+        df = pd.DataFrame(ws_cal.get_all_records())
+        if df.empty or 'Data' not in df.columns:
             return datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         
-        # Filtra solo i Buongiorno (che hanno date sequenziali)
-        df_daily = df[df['Mood'] == 'Buongiorno'].copy()
-        
-        if df_daily.empty:
-             return datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-             
-        # Converte la colonna in datetime
-        df_daily['Data_Specifica'] = pd.to_datetime(df_daily['Data_Specifica'], format="%Y-%m-%d", errors='coerce')
-        
-        # Trova la data massima
-        ultima_data = df_daily['Data_Specifica'].max()
+        # Converte e trova il max
+        df['Data'] = pd.to_datetime(df['Data'], format="%Y-%m-%d", errors='coerce')
+        ultima_data = df['Data'].max()
         
         if pd.isna(ultima_data):
             return datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
             
-        # Ripartiamo dal giorno dopo
         return ultima_data + timedelta(days=1)
-        
-    except Exception as e:
-        print(f"Errore calcolo data: {e}")
+    except:
         return datetime.now()
+
+def aggiorna_marker_next(ws_cal):
+    """Mette una stella ⭐️ accanto alla data di domani"""
+    try:
+        df = pd.DataFrame(ws_cal.get_all_records())
+        domani = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+        
+        # Resetta colonna Marker (scrive vuoto ovunque)
+        # Nota: questo consuma write requests, facciamolo smart se possibile
+        # Per semplicità e risparmio quote:
+        # Non cancelliamo tutto, cerchiamo solo la riga di domani.
+        
+        # Trova indice riga domani
+        row_idx = -1
+        rows = ws_cal.get_all_values() # Legge tutto come lista
+        
+        for i, row in enumerate(rows):
+            if i == 0: continue # Salta header
+            if row[0] == domani: # Colonna 0 è Data
+                row_idx = i + 1 # gspread è 1-based
+                break
+        
+        if row_idx > 0:
+            # Scrive il marker
+            ws_cal.update_cell(row_idx, 5, "⭐️ NEXT") # Colonna 5 è Marker
+            
+    except Exception as e:
+        print(f"Errore marker: {e}")
 
 # --- MOTORE AGENTE ---
 def run_agent():
@@ -108,17 +138,23 @@ def run_agent():
         scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
         client = gspread.authorize(creds)
-        sheet = client.open("CuboAmoreDB").worksheet("Contenuti")
         
-        # 2. CALCOLO DATA DI PARTENZA (CONTINUITÀ)
-        data_partenza = trova_data_start(sheet)
+        # Setup Fogli Separati
+        ws_cal, ws_emo = setup_fogli(client)
+        
+        # 2. CALCOLO DATA
+        data_partenza = trova_data_start(ws_cal)
         data_log_str = data_partenza.strftime("%d-%m-%Y")
 
-        # 3. MEMORIA
-        df = pd.DataFrame(sheet.get_all_records())
+        # 3. MEMORIA (Unisci le frasi di entrambi i fogli per evitare ripetizioni)
         frasi_usate_recenti = []
-        if not df.empty and 'Link_Testo' in df.columns:
-            frasi_usate_recenti = df['Link_Testo'].tail(300).tolist()
+        df_cal = pd.DataFrame(ws_cal.get_all_records())
+        df_emo = pd.DataFrame(ws_emo.get_all_records())
+        
+        if not df_cal.empty and 'Frase' in df_cal.columns:
+            frasi_usate_recenti += df_cal['Frase'].tail(150).tolist()
+        if not df_emo.empty and 'Frase' in df_emo.columns:
+            frasi_usate_recenti += df_emo['Frase'].tail(150).tolist()
 
         # 4. MODELLO
         generation_config = {"temperature": 1, "response_mime_type": "application/json"}
@@ -127,7 +163,7 @@ def run_agent():
         report_log = []
         totale_generate = 0
         
-        invia_notifica_telegram(f"🚀 Avvio generazione 4 settimane.\n📅 Si riparte dal: {data_log_str}")
+        invia_notifica_telegram(f"🚀 Avvio generazione su fogli separati.\n📅 Calendario riparte dal: {data_log_str}")
 
         # --- CICLO 4 SETTIMANE ---
         for settimana in range(4):
@@ -135,7 +171,6 @@ def run_agent():
             report_log.append(f"\n🗓️ **Settimana +{settimana}:**")
             
             try:
-                # BATCH GENERATION
                 prompt = f"""
                 Sei un fidanzato innamorato. Genera contenuti per una intera settimana.
                 OUTPUT JSON: chiavi "Buongiorno", "Triste", "Felice", "Nostalgica", "Stressata".
@@ -150,49 +185,58 @@ def run_agent():
                 text_clean = response.text.strip().replace("```json", "").replace("```", "")
                 dati_settimana = json.loads(text_clean)
                 
+                # --- SCRITTURA SEPARATA ---
+                rows_cal = [] # Per foglio Calendario
+                rows_emo = [] # Per foglio Emozioni
+                
                 for mood, lista_frasi in dati_settimana.items():
                     local_count = 0
                     for frase in lista_frasi:
                         if frase in frasi_usate_recenti: continue 
                         
-                        data_str = ""
                         tipo_info = "Frase"
-
+                        
                         if mood == "Buongiorno":
-                            # Calcolo data continua
+                            # Logica Calendario
                             giorni_da_aggiungere = offset_giorni + local_count
                             data_target = data_partenza + timedelta(days=giorni_da_aggiungere)
                             data_str = data_target.strftime("%Y-%m-%d")
                             
-                            # LOGICA EVENTI SPECIALI NEL DB (Solo visuale per te)
-                            # Se la data coincide con un evento, lo scriviamo nel DB come nota
-                            # Così sai che quel giorno l'app mostrerà l'evento e non questa frase.
-                            check_mese = data_target.month
                             check_giorno = data_target.day
+                            check_mese = data_target.month
+                            if check_giorno == 14: tipo_info = "Anniv/Mesi (Nascosta)"
+                            elif check_mese == 4 and check_giorno == 12: tipo_info = "Compleanno (Nascosta)"
+                            elif check_mese == 12 and check_giorno == 25: tipo_info = "Natale (Nascosta)"
                             
-                            if check_giorno == 14: # Mesiversario o Anniversario
-                                tipo_info = "Frase (Nascosta da Anniv/Mesi)"
-                            elif check_mese == 4 and check_giorno == 12: # Compleanno
-                                tipo_info = "Frase (Nascosta da Compleanno)"
-                            elif check_mese == 12 and check_giorno == 25:
-                                tipo_info = "Frase (Nascosta da Natale)"
+                            # [Data, Mood, Frase, Tipo, Marker]
+                            rows_cal.append([data_str, mood, frase, tipo_info, ""])
+                        else:
+                            # Logica Emozioni Random
+                            # [Mood, Frase, Tipo]
+                            rows_emo.append([mood, frase, tipo_info])
                         
-                        sheet.append_row([mood, tipo_info, frase, data_str])
                         frasi_usate_recenti.append(frase)
                         local_count += 1
                     
                     totale_generate += local_count
                 
-                report_log.append("   ✅ OK")
-                time.sleep(2) 
+                # Scrittura Batch sui due fogli
+                if rows_cal: ws_cal.append_rows(rows_cal)
+                if rows_emo: ws_emo.append_rows(rows_emo)
+                
+                report_log.append("   ✅ Dati salvati.")
+                time.sleep(3) 
 
             except Exception as e:
                 err = f"❌ Errore Settimana {settimana}: {e}"
                 report_log.append(err)
                 time.sleep(5)
+        
+        # 5. EVIDENZIA IL PROSSIMO
+        aggiorna_marker_next(ws_cal)
 
         stats_text = analizza_e_salva_stats(client)
-        messaggio_finale = f"✅ **AGGIORNAMENTO COMPLETATO**\n📅 Nuove frasi dal: {data_log_str}\nTotale: {totale_generate}\n{stats_text}"
+        messaggio_finale = f"✅ **AGGIORNAMENTO COMPLETATO**\n📅 Fogli separati aggiornati.\nTotale: {totale_generate}\n{stats_text}"
         invia_notifica_telegram(messaggio_finale)
         return report_log
 
