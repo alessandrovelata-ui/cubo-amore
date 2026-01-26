@@ -6,6 +6,7 @@ from google.oauth2.service_account import Credentials
 import requests
 import json
 import agente_ia
+import random
 
 # --- CONFIGURAZIONE ---
 st.set_page_config(page_title="Cubo Amore", page_icon="❤️", layout="centered")
@@ -60,7 +61,6 @@ def segna_messaggio_letto(sh, riga_index):
     try:
         ws = sh.worksheet("Contenuti")
         # Aggiorna la cella Mood (colonna 1) da "Manuale" a "Manuale_Letto"
-        # gspread usa indici base-1. riga_index deve essere l'indice reale del foglio.
         ws.update_cell(riga_index, 1, "Manuale_Letto")
     except Exception as e:
         print(f"Errore aggiornamento DB: {e}")
@@ -69,7 +69,6 @@ def segna_messaggio_letto(sh, riga_index):
 def check_telegram_override(df_contenuti):
     try:
         oggi_str = datetime.now().strftime("%Y-%m-%d")
-        # Se c'è già un Manuale (o Manuale_Letto) per oggi, non chiediamo a Telegram
         if not df_contenuti.empty and 'Data_Specifica' in df_contenuti.columns:
              check = df_contenuti[
                  (df_contenuti['Mood'].str.contains('Manuale')) & 
@@ -93,7 +92,6 @@ def check_telegram_override(df_contenuti):
                     testo = msg.get("text", "")
                     data_msg = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d")
                     
-                    # Se trovo un messaggio tuo di oggi
                     if sender_id == admin_id and data_msg == oggi_str and not testo.startswith("/"):
                         sh = connect_db()
                         ws = sh.worksheet("Contenuti")
@@ -113,39 +111,27 @@ def get_contenuto(mood_target, date_check=None):
         if 'Data_Specifica' in df.columns:
             df['Data_Specifica'] = df['Data_Specifica'].astype(str)
         
-        # 1. CONTROLLO TELEGRAM (Solo se è Buongiorno e data reale)
+        # 1. CONTROLLO TELEGRAM
         if mood_target == "Buongiorno" and not date_check:
             check_telegram_override(df)
-            # Ricarichiamo il DF dopo eventuale override
             df = pd.DataFrame(ws.get_all_records())
             if 'Data_Specifica' in df.columns: df['Data_Specifica'] = df['Data_Specifica'].astype(str)
 
-        # 2. CERCA MESSAGGIO MANUALE (PRIORITÀ ASSOLUTA)
-        # Ma SOLO se stiamo chiedendo il Buongiorno!
+        # 2. CERCA MESSAGGIO MANUALE (Solo per Buongiorno)
         if mood_target == "Buongiorno":
-            # Cerchiamo riga con Mood="Manuale" e Data=Oggi
-            # Nota: usiamo l'indice + 2 perché gspread ha header (1) e base-1
             indices = df.index[(df['Mood'] == 'Manuale') & (df['Data_Specifica'] == oggi)].tolist()
-            
             if indices:
-                idx = indices[-1] # Prendiamo l'ultimo inserito
+                idx = indices[-1]
                 messaggio = df.iloc[idx]['Link_Testo']
-                
-                # SE NON È UNA SIMULAZIONE -> SEGNA COME LETTO
                 if not date_check:
                     segna_messaggio_letto(sh, idx + 2) 
-                
                 return messaggio
-            
-            # Se è già stato letto oggi, ignora e passa all'IA
-            # (Il codice sotto cercherà 'Buongiorno')
 
-        # 3. CERCA FRASE AUTOMATICA (IA)
+        # 3. AUTOMATICO
         if mood_target == "Buongiorno":
             daily = df[(df['Mood'] == 'Buongiorno') & (df['Data_Specifica'] == oggi)]
             if not daily.empty: return daily.iloc[-1]['Link_Testo']
             
-        # 4. EMOZIONI (Click Bottoni)
         filtro = df[df['Mood'] == mood_target]
         if filtro.empty: return "Ti amo ❤️"
         return filtro.sample().iloc[0]['Link_Testo']
@@ -153,13 +139,14 @@ def get_contenuto(mood_target, date_check=None):
     except Exception as e:
         return f"Amore infinito ❤️ ({str(e)})"
 
-# --- LOGICA EVENTI ---
+# --- LOGICA EVENTI CON CITAZIONE E COUNTER ---
 def check_special_event(date_check=None):
     now = date_check if date_check else datetime.now()
     start_date = datetime(2022, 2, 14, 0, 0, 0)
     
     delta = now - start_date
     giorni_totali = delta.days
+    ore_totali = int(delta.total_seconds() // 3600)
     
     anni = now.year - start_date.year
     if (now.month, now.day) < (start_date.month, start_date.day): anni -= 1
@@ -168,12 +155,23 @@ def check_special_event(date_check=None):
     if now.day < start_date.day: mesi_diff -= 1
     mesi_reali = mesi_diff % 12
     
+    # 1. ANNIVERSARIO (14 Febbraio)
     if now.month == 2 and now.day == 14:
-        return "🎉 Anniversario", f"Buon Anniversario! ❤️\n{anni} anni di Noi.", f"Sono {giorni_totali} giorni che mi sopporti!"
+        citazione = "\n\n\"Tu sei ogni ragione, ogni speranza e ogni sogno che abbia mai avuto.\" – Le pagine della nostra vita"
+        msg = f"Buon Anniversario! ❤️\n{anni} anni di Noi.{citazione}"
+        # Counter con GIORNI e ORE
+        counter = f"Per la precisione: {giorni_totali} giorni e {ore_totali} ore insieme!"
+        return "🎉 Anniversario", msg, counter
+        
+    # 2. MESIVERSARIO
     if now.day == 14:
-        return "🌹 Mesiversario", f"Buon Mesiversario! 🌹\n{anni} Anni e {mesi_reali} Mesi.", f"Giorni totali: {giorni_totali}"
+        msg = f"Buon Mesiversario! 🌹\n{anni} Anni e {mesi_reali} Mesi."
+        counter = f"Il contatore segna: {giorni_totali} giorni totali di noi."
+        return "🌹 Mesiversario", msg, counter
+
+    # 3. ALTRE DATE
     if now.month == 4 and now.day == 12:
-        return "🎂 Buon Compleanno!", "Tanti auguri al mio Sole!", None
+        return "🎂 Buon Compleanno!", "Tanti auguri al mio Sole! Sei il regalo più bello.", None
     if now.month == 6 and now.day in [20, 21]:
         return "☀️ Solstizio d'Estate", "Il giorno più lungo per l'amore più grande.", None
     if now.month == 12 and now.day in [21, 22]:
@@ -219,6 +217,7 @@ if mode == "admin":
                     if titolo:
                         st.markdown(f"**🌟 EVENTO:** {titolo}")
                         st.code(f"{msg}")
+                        if counter: st.code(f"Counter: {counter}")
                     else:
                         st.markdown("**☀️ Normale:**")
                         st.write(f"Frase: *{frase_db}*")
@@ -236,7 +235,6 @@ elif mode == "daily":
     else:
         st.markdown("## Buongiorno Amore")
         st.divider()
-        # Qui controlla se c'è messaggio manuale. Se c'è, lo mostra e lo segna come letto.
         frase = get_contenuto('Buongiorno')
         st.markdown(f"<h3 style='text-align: center; color: #444;'>{frase}</h3>", unsafe_allow_html=True)
 
@@ -246,8 +244,6 @@ elif mode == "mood":
     c1, c2 = st.columns(2)
     c3, c4 = st.columns(2)
     
-    # Nota: Qui chiamiamo get_contenuto con "Triste", "Felice" etc.
-    # Quindi la logica del messaggio manuale (legata a "Buongiorno") NON viene attivata.
     if c1.button("😔 Triste"):
         salva_log("Triste")
         notifica_telegram("⚠️ LEI È TRISTE")
