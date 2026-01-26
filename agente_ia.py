@@ -4,17 +4,17 @@ import gspread
 import google.generativeai as genai
 from oauth2client.service_account import ServiceAccountCredentials
 import json
-import streamlit as st # Serve per leggere i secrets se lanciato da Streamlit
+import streamlit as st
 
 # Funzione principale che verrà chiamata dal bottone o dal timer
 def run_agent():
-    # SETUP CREDENZIALI (Gestisce sia GitHub che Streamlit)
+    # SETUP CREDENZIALI
     try:
         # Se siamo su Streamlit Cloud
         GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
         creds_dict = json.loads(st.secrets["GOOGLE_SHEETS_JSON"])
     except:
-        # Se siamo in locale o GitHub Actions (fallback)
+        # Se siamo in locale o GitHub Actions
         GEMINI_KEY = os.environ["GEMINI_API_KEY"]
         GOOGLE_JSON = os.environ["GOOGLE_SHEETS_JSON"]
         creds_dict = json.loads(GOOGLE_JSON)
@@ -30,14 +30,14 @@ def run_agent():
     # LETTURA DATI ESISTENTI
     dati = pd.DataFrame(sheet.get_all_records())
     
-    # I 5 MOOD DA GENERARE (Buongiorno + 4 Emozioni)
+    # I 5 MOOD DA GENERARE
     moods = ["Buongiorno", "Triste", "Felice", "Nostalgica", "Stressata"]
     
     report = []
     
     for m in moods:
         try:
-            # CERCA ESEMPI PRECEDENTI (Per mantenere lo stile)
+            # CERCA ESEMPI PRECEDENTI
             if not dati.empty and 'Mood' in dati.columns:
                 esempi_df = dati[dati['Mood'] == m]['Link_Testo']
                 if not esempi_df.empty:
@@ -47,8 +47,10 @@ def run_agent():
             else:
                 esempi = ["Ti amo", "Sei unica"] 
             
-            # CHIEDI A GEMINI
-            model = genai.GenerativeModel('gemini-pro')
+            # --- MODIFICA FONDAMENTALE QUI SOTTO ---
+            # Usiamo il modello aggiornato 'gemini-1.5-flash'
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            
             prompt = f"""
             Agisci come il fidanzato perfetto. Scrivi una frase per la tua ragazza.
             MOOD LEI: {m}
@@ -57,7 +59,7 @@ def run_agent():
             ESEMPI PASSATI: {esempi}
             """
             response = model.generate_content(prompt)
-            nuova_frase = response.text.strip().replace('"', '') # Pulisce virgolette
+            nuova_frase = response.text.strip().replace('"', '')
             
             # SALVA NEL DB
             sheet.append_row([m, "Frase", nuova_frase, ""])
@@ -68,7 +70,6 @@ def run_agent():
             
     return report
 
-# Helper per dare istruzioni diverse a Gemini in base al mood
 def get_obiettivo(mood):
     if mood == "Buongiorno": return "Motivare e dare amore per la giornata."
     if mood == "Triste": return "Consolare, far sentire la vicinanza."
