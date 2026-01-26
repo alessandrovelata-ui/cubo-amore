@@ -56,8 +56,8 @@ def analizza_e_salva_stats(client):
     except Exception as e:
         return f"\n⚠️ Errore statistiche: {e}"
 
-# --- MOTORE AGENTE (CON SIMULAZIONE) ---
-def run_agent(weeks=4, data_start=None):
+# --- MOTORE AGENTE (PERFORMANTE) ---
+def run_agent():
     try:
         # 1. SETUP
         try:
@@ -79,78 +79,79 @@ def run_agent(weeks=4, data_start=None):
         df = pd.DataFrame(sheet.get_all_records())
         frasi_usate_recenti = []
         if not df.empty and 'Link_Testo' in df.columns:
-            frasi_usate_recenti = df['Link_Testo'].tail(200).tolist()
+            frasi_usate_recenti = df['Link_Testo'].tail(300).tolist()
 
         # 3. MODELLO
         generation_config = {"temperature": 1, "response_mime_type": "application/json"}
         model = genai.GenerativeModel('gemini-2.5-flash', generation_config=generation_config)
         
+        oggi = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         report_log = []
-        moods = ["Buongiorno", "Triste", "Felice", "Nostalgica", "Stressata"]
-        
-        # Gestione Data Simulazione
-        if data_start:
-            oggi = data_start
-            header_msg = f"🧪 TEST: Generazione simulata dal {oggi.strftime('%Y-%m-%d')}"
-        else:
-            oggi = datetime.now()
-            header_msg = f"🚀 Avvio generazione reale ({weeks} settimane)"
-            
         totale_generate = 0
-        invia_notifica_telegram(f"{header_msg}...")
+        
+        invia_notifica_telegram(f"🚀 Avvio generazione ottimizzata (4 richieste batch)...")
 
-        # --- CICLO GENERAZIONE ---
-        for settimana in range(weeks):
-            offset_giorni_settimana = settimana * 7
+        # --- CICLO 4 SETTIMANE ---
+        for settimana in range(4):
+            offset_giorni = settimana * 7
             report_log.append(f"\n🗓️ **Settimana +{settimana}:**")
             
-            for m in moods:
-                try:
-                    prompt = f"""
-                    Sei un fidanzato innamorato. Genera un array JSON di 7 frasi uniche per il mood: {m}.
-                    REGOLE:
-                    1. 5 frasi tue (dolci) + 2 CITAZIONI.
-                    2. USA SOLO APICE SINGOLO ('). NO virgolette doppie (").
-                    3. Evita: {str(frasi_usate_recenti[-20:])}
-                    OUTPUT: Solo JSON Array. Esempio: ['Frase 1', 'Frase 2']
-                    """
+            try:
+                # UNICA RICHIESTA PER TUTTA LA SETTIMANA (Ottimizzazione API)
+                prompt = f"""
+                Sei un fidanzato innamorato. Genera i contenuti per una intera settimana.
+                
+                OUTPUT RICHIESTO: Un oggetto JSON con esattamente queste chiavi:
+                "Buongiorno", "Triste", "Felice", "Nostalgica", "Stressata".
+                
+                PER OGNI CHIAVE, fornisci una lista di 7 frasi uniche.
+                
+                REGOLE:
+                1. Stile: dolce, breve, romantico.
+                2. Includi 2 citazioni (Film/Libri/Canzoni) dentro ogni lista.
+                3. USA SOLO APICE SINGOLO ('). NO virgolette doppie (").
+                4. Evita ripetizioni di: {str(frasi_usate_recenti[-30:])}
+                """
 
-                    response = model.generate_content(prompt)
-                    text_clean = response.text.strip().replace("```json", "").replace("```", "")
-                    lista_frasi = json.loads(text_clean)
-                    
+                response = model.generate_content(prompt)
+                text_clean = response.text.strip().replace("```json", "").replace("```", "")
+                dati_settimana = json.loads(text_clean)
+                
+                # Elaborazione Dati
+                for mood, lista_frasi in dati_settimana.items():
                     local_count = 0
                     for frase in lista_frasi:
                         if frase in frasi_usate_recenti: continue 
                         
                         data_str = ""
-                        if m == "Buongiorno":
-                            giorni_da_aggiungere = offset_giorni_settimana + local_count
+                        if mood == "Buongiorno":
+                            # Calcola la data specifica progressiva
+                            giorni_da_aggiungere = offset_giorni + local_count
                             data_target = oggi + timedelta(days=giorni_da_aggiungere)
                             data_str = data_target.strftime("%Y-%m-%d")
                         
-                        sheet.append_row([m, "Frase", frase, data_str])
+                        sheet.append_row([mood, "Frase", frase, data_str])
                         frasi_usate_recenti.append(frase)
                         local_count += 1
                     
                     totale_generate += local_count
-                    report_log.append(f"   - {m}: +{local_count}")
-                    time.sleep(2) 
-                    
-                except Exception as e:
-                    report_log.append(f"   ❌ Errore {m}: {e}")
-                    time.sleep(5)
-            time.sleep(2)
+                
+                report_log.append("   ✅ Dati settimana generati e salvati.")
+                
+                # Pausa minima (visto che hai 150 RPM, 2 secondi sono sufficienti per gentilezza verso l'API)
+                time.sleep(2) 
 
-        if not data_start:
-            stats_text = analizza_e_salva_stats(client)
-        else:
-            stats_text = "\n(Statistiche ignorate in modalità Test)"
-        
-        messaggio_finale = f"✅ **COMPLETATO**\nFrasi: {totale_generate}\n{stats_text}"
+            except Exception as e:
+                err = f"❌ Errore Batch Settimana {settimana}: {e}"
+                report_log.append(err)
+                time.sleep(5)
+
+        stats_text = analizza_e_salva_stats(client)
+        messaggio_finale = f"✅ **AGENTE COMPLETATO**\nFrasi create: {totale_generate}\n{stats_text}"
         invia_notifica_telegram(messaggio_finale)
         return report_log
 
     except Exception as e:
-        invia_notifica_telegram(f"❌ ERRORE: {str(e)}")
-        return [str(e)]
+        err = f"❌ ERRORE CRITICO: {str(e)}"
+        invia_notifica_telegram(err)
+        return [err]
