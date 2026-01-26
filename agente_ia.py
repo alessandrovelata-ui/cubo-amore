@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 import gspread
-from google.oauth2.service_account import Credentials # <--- NUOVA LIBRERIA
+from google.oauth2.service_account import Credentials
 import google.generativeai as genai
 import json
 import streamlit as st
@@ -30,15 +30,14 @@ def analizza_e_salva_stats(client):
     try:
         sheet_log = client.open("CuboAmoreDB").worksheet("Log_Mood")
         df = pd.DataFrame(sheet_log.get_all_records())
-        
         if df.empty: return "Nessun dato nel Log."
-
+        
         colonna_mood = df.columns[2] 
         conteggio = df[colonna_mood].value_counts().to_dict()
         
-        oggi = datetime.now()
+        oggi = datetime.now().strftime("%Y-%m-%d")
         report_text = "\n📊 **Report Ultimi 7 Giorni:**\n"
-        riga_excel = [oggi.strftime("%Y-%m-%d")]
+        riga_excel = [oggi]
         
         moods_order = ["Triste", "Felice", "Nostalgica", "Stressata"]
         for m in moods_order:
@@ -54,14 +53,13 @@ def analizza_e_salva_stats(client):
         
         sheet_report.append_row(riga_excel)
         return report_text
-
     except Exception as e:
         return f"\n⚠️ Errore statistiche: {e}"
 
-# --- MOTORE AGENTE (VERSIONE MENSILE) ---
-def run_agent():
+# --- MOTORE AGENTE (CON SIMULAZIONE) ---
+def run_agent(weeks=4, data_start=None):
     try:
-        # 1. SETUP NUOVO SISTEMA DI AUTENTICAZIONE
+        # 1. SETUP
         try:
             GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
             creds_dict = json.loads(st.secrets["GOOGLE_SHEETS_JSON"])
@@ -72,15 +70,9 @@ def run_agent():
 
         genai.configure(api_key=GEMINI_KEY)
         
-        # --- MODIFICA FONDAMENTALE QUI SOTTO ---
-        scope = [
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive"
-        ]
+        scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
         client = gspread.authorize(creds)
-        # ----------------------------------------
-        
         sheet = client.open("CuboAmoreDB").worksheet("Contenuti")
         
         # 2. MEMORIA
@@ -90,48 +82,45 @@ def run_agent():
             frasi_usate_recenti = df['Link_Testo'].tail(200).tolist()
 
         # 3. MODELLO
-        generation_config = {
-            "temperature": 1,
-            "response_mime_type": "application/json",
-        }
+        generation_config = {"temperature": 1, "response_mime_type": "application/json"}
         model = genai.GenerativeModel('gemini-2.5-flash', generation_config=generation_config)
         
         report_log = []
         moods = ["Buongiorno", "Triste", "Felice", "Nostalgica", "Stressata"]
-        oggi = datetime.now()
-        totale_generate = 0
         
-        # --- CICLO MENSILE (4 SETTIMANE) ---
-        SETTIMANE = 4
-        invia_notifica_telegram(f"🚀 Avvio generazione mensile ({SETTIMANE} settimane). Porta pazienza...")
+        # Gestione Data Simulazione
+        if data_start:
+            oggi = data_start
+            header_msg = f"🧪 TEST: Generazione simulata dal {oggi.strftime('%Y-%m-%d')}"
+        else:
+            oggi = datetime.now()
+            header_msg = f"🚀 Avvio generazione reale ({weeks} settimane)"
+            
+        totale_generate = 0
+        invia_notifica_telegram(f"{header_msg}...")
 
-        for settimana in range(SETTIMANE):
+        # --- CICLO GENERAZIONE ---
+        for settimana in range(weeks):
             offset_giorni_settimana = settimana * 7
-            report_log.append(f"\n🗓️ **Settimana {settimana + 1}:**")
+            report_log.append(f"\n🗓️ **Settimana +{settimana}:**")
             
             for m in moods:
                 try:
                     prompt = f"""
                     Sei un fidanzato innamorato. Genera un array JSON di 7 frasi uniche per il mood: {m}.
-                    
-                    REGOLE TASSATIVE:
-                    1. 5 frasi tue (dolci, originali) + 2 CITAZIONI (Film, Libri).
-                    2. IMPORTANTE: Usa SOLO l'apice singolo (') nel testo. NO virgolette doppie (").
-                    3. Varia il tono rispetto a queste frasi recenti: {str(frasi_usate_recenti[-20:])}
-                    
+                    REGOLE:
+                    1. 5 frasi tue (dolci) + 2 CITAZIONI.
+                    2. USA SOLO APICE SINGOLO ('). NO virgolette doppie (").
+                    3. Evita: {str(frasi_usate_recenti[-20:])}
                     OUTPUT: Solo JSON Array. Esempio: ['Frase 1', 'Frase 2']
                     """
 
                     response = model.generate_content(prompt)
-                    
-                    text_clean = response.text.strip()
-                    if "```json" in text_clean:
-                        text_clean = text_clean.replace("```json", "").replace("```", "")
-                    
+                    text_clean = response.text.strip().replace("```json", "").replace("```", "")
                     lista_frasi = json.loads(text_clean)
                     
                     local_count = 0
-                    for i, frase in enumerate(lista_frasi):
+                    for frase in lista_frasi:
                         if frase in frasi_usate_recenti: continue 
                         
                         data_str = ""
@@ -151,21 +140,17 @@ def run_agent():
                 except Exception as e:
                     report_log.append(f"   ❌ Errore {m}: {e}")
                     time.sleep(5)
-            
-            time.sleep(3)
+            time.sleep(2)
 
-        stats_text = analizza_e_salva_stats(client)
+        if not data_start:
+            stats_text = analizza_e_salva_stats(client)
+        else:
+            stats_text = "\n(Statistiche ignorate in modalità Test)"
         
-        messaggio_finale = f"✅ **GENERAZIONE COMPLETATA**\nFrasi create: {totale_generate}\n"
-        messaggio_finale += f"\n{stats_text}"
-        
+        messaggio_finale = f"✅ **COMPLETATO**\nFrasi: {totale_generate}\n{stats_text}"
         invia_notifica_telegram(messaggio_finale)
         return report_log
 
-    except Exception as e_critico:
-        err_msg = f"❌ ERRORE CRITICO: {str(e_critico)}"
-        invia_notifica_telegram(err_msg)
-        return [err_msg]
-
-if __name__ == "__main__":
-    print(run_agent())
+    except Exception as e:
+        invia_notifica_telegram(f"❌ ERRORE: {str(e)}")
+        return [str(e)]
