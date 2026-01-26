@@ -9,7 +9,7 @@ import time
 import requests
 from datetime import datetime, timedelta
 
-# --- FUNZIONE DI SUPPORTO: NOTIFICA TELEGRAM ---
+# --- NOTIFICHE TELEGRAM ---
 def invia_notifica_telegram(testo):
     try:
         try:
@@ -23,9 +23,9 @@ def invia_notifica_telegram(testo):
             url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
             requests.get(url, params={"chat_id": CHAT_ID, "text": testo})
     except Exception as e:
-        print(f"Errore invio Telegram: {e}")
+        print(f"Errore Telegram: {e}")
 
-# --- FUNZIONE DI SUPPORTO: STATISTICHE ---
+# --- CALCOLO STATISTICHE ---
 def analizza_e_salva_stats(client):
     try:
         sheet_log = client.open("CuboAmoreDB").worksheet("Log_Mood")
@@ -33,8 +33,7 @@ def analizza_e_salva_stats(client):
         
         if df.empty: return "Nessun dato nel Log."
 
-        # Statistiche ultimi 7 giorni
-        colonna_mood = df.columns[2] 
+        colonna_mood = df.columns[2] # Assumiamo colonna 3 = Mood
         conteggio = df[colonna_mood].value_counts().to_dict()
         
         oggi = datetime.now()
@@ -59,10 +58,10 @@ def analizza_e_salva_stats(client):
     except Exception as e:
         return f"\n⚠️ Errore statistiche: {e}"
 
-# --- FUNZIONE PRINCIPALE ---
+# --- MOTORE AGENTE ---
 def run_agent():
-    # SETUP CREDENZIALI
     try:
+        # 1. SETUP
         try:
             GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
             creds_dict = json.loads(st.secrets["GOOGLE_SHEETS_JSON"])
@@ -78,22 +77,18 @@ def run_agent():
         client = gspread.authorize(creds)
         sheet = client.open("CuboAmoreDB").worksheet("Contenuti")
         
-        # MEMORIA
+        # 2. MEMORIA
         df = pd.DataFrame(sheet.get_all_records())
         frasi_usate_recenti = []
         if not df.empty and 'Link_Testo' in df.columns:
             frasi_usate_recenti = df['Link_Testo'].tail(150).tolist()
 
-        # --- MOTORE GEMINI PRO ---
-        # Impostiamo il modello PRO richiesto
-        # Usiamo response_mime_type per forzare il JSON ed evitare errori di virgole
+        # 3. MODELLO
         generation_config = {
-            "temperature": 1, 
+            "temperature": 1,
             "response_mime_type": "application/json",
         }
-        
-        # NOTA: Se 'gemini-2.5-pro' ti dà errore 404, prova 'gemini-1.5-pro'
-        model = genai.GenerativeModel('gemini-2.5-pro', generation_config=generation_config)
+        model = genai.GenerativeModel('gemini-2.5-flash', generation_config=generation_config)
         
         report_log = []
         moods = ["Buongiorno", "Triste", "Felice", "Nostalgica", "Stressata"]
@@ -102,19 +97,32 @@ def run_agent():
 
         for m in moods:
             try:
+                # --- PROMPT CORRETTO PER EVITARE ERRORE JSON ---
+                # Abbiamo aggiunto la regola sulle virgolette singole/doppie
                 prompt = f"""
-                Sei un fidanzato poeta e innamorato. Genera un array JSON di 7 frasi uniche per il mood: {m}.
+                Sei un fidanzato innamorato. Genera un array JSON di 7 frasi per il mood: {m}.
                 
-                REGOLE:
-                - 5 frasi tue: profonde, emotive, dolci (max 20 parole).
-                - 2 frasi CITAZIONI: usa citazioni d'autore (Film, Poeti, Canzoni) coerenti. Metti autore tra parentesi.
-                - MEMORIA: NON usare queste frasi recenti: {str(frasi_usate_recenti[-15:])}
+                REGOLE TASSATIVE:
+                1. Genera 5 frasi originali e dolci.
+                2. Genera 2 CITAZIONI (Film, Libri, Canzoni).
+                3. IMPORTANTE: All'interno del testo delle frasi, usa SOLO l'apice singolo ('). 
+                   NON usare MAI virgolette doppie (") all'interno del testo, altrimenti rompi il codice.
+                   Esempio GIUSTO: "L'amore conta"
+                   Esempio SBAGLIATO: "L"amore" conta"
+                4. Evita queste frasi recenti: {str(frasi_usate_recenti[-15:])}
                 
-                OUTPUT: Solo JSON Array di stringhe. Esempio: ["Frase 1", "Frase 2 (Autore)"]
+                OUTPUT: Solo JSON Array di stringhe. Esempio: ["Frase 1", "Frase 2"]
                 """
 
                 response = model.generate_content(prompt)
-                lista_frasi = json.loads(response.text)
+                
+                # --- PULIZIA DI SICUREZZA ---
+                # A volte il modello mette testo prima o dopo il JSON. Puliamo.
+                text_clean = response.text.strip()
+                if "```json" in text_clean:
+                    text_clean = text_clean.replace("```json", "").replace("```", "")
+                
+                lista_frasi = json.loads(text_clean)
                 
                 local_count = 0
                 for frase in lista_frasi:
@@ -129,24 +137,24 @@ def run_agent():
                     local_count += 1
                 
                 totale_generate += local_count
-                report_log.append(f"✅ {m} (Pro): +{local_count}")
+                report_log.append(f"✅ {m}: +{local_count}")
+                time.sleep(5) 
                 
-                # --- PAUSA PRO (30 Secondi) ---
-                # I modelli Pro hanno limiti più bassi (RPM). 
-                # Aumentiamo la pausa per evitare il blocco "429 Quota Exceeded".
-                time.sleep(30) 
-                
+            except json.JSONDecodeError as e_json:
+                # Se fallisce il JSON, proviamo a salvare l'errore specifico ma continuiamo
+                err = f"❌ Errore Formato JSON su {m}. Riprovo al prossimo giro."
+                report_log.append(err)
+                print(f"JSON Error content: {response.text}")
+                time.sleep(5)
             except Exception as e:
                 err = f"❌ Errore {m}: {e}"
                 report_log.append(err)
-                # Se fallisce, potrebbe essere per il nome del modello o rate limit
-                invia_notifica_telegram(f"⚠️ {err}")
-                time.sleep(30)
+                time.sleep(5)
 
         # REPORT FINALE
         stats_text = analizza_e_salva_stats(client)
         
-        messaggio_finale = f"✅ **AGENTE PRO COMPLETATO**\n\n"
+        messaggio_finale = f"✅ **AGENTE COMPLETATO**\n"
         messaggio_finale += f"Frasi create: {totale_generate}\n"
         messaggio_finale += "\n".join(report_log)
         messaggio_finale += f"\n{stats_text}"
@@ -156,7 +164,7 @@ def run_agent():
         return report_log
 
     except Exception as e_critico:
-        err_msg = f"❌ ERRORE CRITICO AGENTE: {str(e_critico)}"
+        err_msg = f"❌ ERRORE CRITICO: {str(e_critico)}"
         invia_notifica_telegram(err_msg)
         return [err_msg]
 
