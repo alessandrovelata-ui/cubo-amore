@@ -6,9 +6,17 @@ from oauth2client.service_account import ServiceAccountCredentials
 import json
 import streamlit as st
 import time
+from datetime import datetime, timedelta
+import locale
+
+# Proviamo a impostare l'italiano per i nomi dei giorni (es. Lunedì)
+try:
+    locale.setlocale(locale.LC_TIME, 'it_IT.utf8')
+except:
+    pass # Se non ce l'ha, userà l'inglese o default, non importa
 
 def run_agent():
-    # SETUP CREDENZIALI
+    # --- SETUP CREDENZIALI ---
     try:
         GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
         creds_dict = json.loads(st.secrets["GOOGLE_SHEETS_JSON"])
@@ -19,73 +27,91 @@ def run_agent():
 
     genai.configure(api_key=GEMINI_KEY)
     
-    # CONNESSIONE DB
     scope = ["https://spreadsheets.google.com/feeds",'https://www.googleapis.com/auth/drive']
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
     sheet = client.open("CuboAmoreDB").worksheet("Contenuti")
     
+    # Leggiamo i dati esistenti per dare contesto
     dati = pd.DataFrame(sheet.get_all_records())
-    
-    moods = ["Buongiorno", "Triste", "Felice", "Nostalgica", "Stressata"]
+    model = genai.GenerativeModel('gemini-2.5-flash')
     report = []
+
+    # --- FASE 1: GENERAZIONE DEI 7 BUONGIORNO (Uno per giorno) ---
+    oggi = datetime.now()
     
-    for m in moods:
+    for i in range(7):
+        # Calcoliamo la data: Oggi, Domani, Dopodomani...
+        data_target = oggi + timedelta(days=i)
+        data_str = data_target.strftime("%Y-%m-%d")
+        nome_giorno = data_target.strftime("%A") # Es. Lunedì, Martedì...
+        
+        # Recupera esempi vecchi
+        if not dati.empty and 'Mood' in dati.columns:
+            esempi = dati[dati['Mood'] == 'Buongiorno']['Link_Testo'].tail(3).tolist()
+        else:
+            esempi = ["Buongiorno amore", "Svegliarmi con te è un sogno"]
+
+        prompt = f"""
+        Scrivi una frase di BUONGIORNO per la mia ragazza.
+        
+        CONTESTO: Deve essere specifica per il giorno: {nome_giorno}.
+        DATA: {data_str}
+        STILE: Breve (max 15 parole), dolce, motivante.
+        ESEMPI STILE: {esempi}
+
+        REGOLE:
+        1. Rispondi SOLO con il testo della frase.
+        2. Niente virgolette, elenchi o commenti.
+        """
+        
+        try:
+            response = model.generate_content(prompt)
+            frase_pulita = response.text.strip().replace('"', '').replace('*', '').split('\n')[0]
+            
+            # SALVIAMO CON LA DATA SPECIFICA!
+            # Mood, Tipo, Testo, Data_Specifica
+            sheet.append_row(["Buongiorno", "Frase", frase_pulita, data_str])
+            report.append(f"✅ Buongiorno del {data_str} ({nome_giorno}): {frase_pulita}")
+            
+            time.sleep(15) # Pausa obbligatoria
+            
+        except Exception as e:
+            report.append(f"❌ Errore Buongiorno {data_str}: {e}")
+            time.sleep(15)
+
+    # --- FASE 2: RIMPOLPARE I MOOD (1 nuovo per tipo a settimana) ---
+    moods_extra = ["Triste", "Felice", "Nostalgica", "Stressata"]
+    
+    for m in moods_extra:
         try:
             # Recupera esempi
             if not dati.empty and 'Mood' in dati.columns:
-                esempi_df = dati[dati['Mood'] == m]['Link_Testo']
-                esempi = esempi_df.tail(3).tolist() if not esempi_df.empty else ["Nessun esempio"]
+                esempi = dati[dati['Mood'] == m]['Link_Testo'].tail(3).tolist()
             else:
-                esempi = ["Ti amo", "Sei unica"] 
-            
-            # USIAMO IL MODELLO 2.5 FLASH
-            model = genai.GenerativeModel('gemini-2.5-flash')
-            
-            # --- PROMPT BLINDATO ---
-            # Gli diamo regole severe per evitare elenchi o commenti
-            prompt = f"""
-            Il tuo compito è generare ESATTAMENTE UNA singola frase romantica per la mia ragazza.
-            
-            MOOD RICHIESTO: {m}
-            STILE: Breve (max 15 parole), dolce, intimo.
-            ESEMPI DAL PASSATO (Imita questo stile): {esempi}
+                esempi = ["Ti amo", "Coraggio"]
 
-            REGOLE TASSATIVE (VIETATO SGARRARE):
-            1. Rispondi SOLO con il testo della frase.
-            2. NON mettere elenchi puntati.
-            3. NON scrivere "Ecco alcune opzioni".
-            4. NON scrivere il conteggio delle parole tra parentesi (es. "10 parole").
-            5. NON usare virgolette.
-            6. Devi produrre UNA sola riga di testo.
+            prompt = f"""
+            Scrivi una frase per la mia ragazza.
+            MOOD LEI: {m}
+            STILE: Breve (max 15 parole), empatica.
+            ESEMPI: {esempi}
+            REGOLE: Solo testo, niente commenti.
             """
             
             response = model.generate_content(prompt)
+            frase_pulita = response.text.strip().replace('"', '').replace('*', '').split('\n')[0]
             
-            # --- PULIZIA EXTRA (Python) ---
-            # Se l'IA disubbidisce, puliamo noi il testo a forza
-            testo_grezzo = response.text.strip()
+            # Qui la data la lasciamo vuota, così vale "per sempre"
+            sheet.append_row([m, "Frase", frase_pulita, ""])
+            report.append(f"✅ Mood {m}: {frase_pulita}")
             
-            # 1. Se ci sono più righe, prendiamo solo la prima (che di solito è la frase migliore)
-            prima_riga = testo_grezzo.split('\n')[0]
-            
-            # 2. Rimuoviamo caratteri sporchi (asterischi, virgolette, trattini elenco)
-            nuova_frase = prima_riga.replace('*', '').replace('"', '').replace('-', '').strip()
-            
-            # 3. Rimuoviamo eventuali parentesi finali tipo "(10 parole)" se sono rimaste
-            if "(" in nuova_frase:
-                nuova_frase = nuova_frase.split('(')[0].strip()
-            
-            sheet.append_row([m, "Frase", nuova_frase, ""])
-            report.append(f"✅ {m}: {nuova_frase}")
-            
-            # PAUSA ANTI-BLOCCO (15 secondi)
             time.sleep(15)
             
         except Exception as e:
-            report.append(f"❌ Errore {m}: {e}")
+            report.append(f"❌ Errore Mood {m}: {e}")
             time.sleep(15)
-            
+
     return report
 
 if __name__ == "__main__":
