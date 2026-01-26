@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials # <--- NUOVA LIBRERIA
 import requests
 import json
 import agente_ia
@@ -10,7 +10,7 @@ import agente_ia
 # --- CONFIGURAZIONE ---
 st.set_page_config(page_title="Cubo Amore", page_icon="❤️", layout="centered")
 
-# --- CSS ESTETICO (Il tuo stile rosa) ---
+# --- CSS ESTETICO ---
 hide_st_style = """
             <style>
             .stApp { background-color: #FFF5F7; }
@@ -62,13 +62,18 @@ hide_st_style = """
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
 
-# --- FUNZIONI UTILI ---
+# --- FUNZIONI DI CONNESSIONE AGGIORNATE ---
 def connect_db():
-    scope = ["[https://spreadsheets.google.com/feeds](https://spreadsheets.google.com/feeds)",'[https://www.googleapis.com/auth/drive](https://www.googleapis.com/auth/drive)']
+    # --- NUOVO SISTEMA DI AUTENTICAZIONE ---
+    scope = [
+        "[https://www.googleapis.com/auth/spreadsheets](https://www.googleapis.com/auth/spreadsheets)",
+        "[https://www.googleapis.com/auth/drive](https://www.googleapis.com/auth/drive)"
+    ]
     json_creds = json.loads(st.secrets["GOOGLE_SHEETS_JSON"])
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(json_creds, scope)
+    creds = Credentials.from_service_account_info(json_creds, scopes=scope)
     client = gspread.authorize(creds)
     return client.open("CuboAmoreDB") 
+    # ---------------------------------------
 
 def notifica_telegram(testo):
     try:
@@ -85,54 +90,37 @@ def salva_log(mood):
         ws.append_row([datetime.now().strftime("%Y-%m-%d"), datetime.now().strftime("%H:%M"), mood])
     except: pass
 
-# --- NUOVA FUNZIONE: CONTROLLO MESSAGGI MANUALI DA TELEGRAM ---
+# --- OVERRIDE TELEGRAM ---
 def check_telegram_override(df_contenuti):
-    """
-    Controlla se c'è un messaggio manuale inviato OGGI su Telegram.
-    Se c'è e non è ancora nel DB, lo salva.
-    """
     try:
-        # 1. Controlla se abbiamo già una frase Manuale per oggi nel DB (per evitare duplicati o sovrascritture)
         oggi_str = datetime.now().strftime("%Y-%m-%d")
         if not df_contenuti.empty and 'Data_Specifica' in df_contenuti.columns:
-             # Convertiamo in stringa per sicurezza
              manuali_oggi = df_contenuti[
                  (df_contenuti['Mood'] == 'Manuale') & 
                  (df_contenuti['Data_Specifica'].astype(str) == oggi_str)
              ]
-             if not manuali_oggi.empty:
-                 return # C'è già una frase manuale nel DB, usiamo quella.
+             if not manuali_oggi.empty: return 
         
-        # 2. Se non c'è nel DB, chiediamo a Telegram
         token = st.secrets["TELEGRAM_TOKEN"]
-        admin_id = str(st.secrets["TELEGRAM_CHAT_ID"]) # Il tuo ID
+        admin_id = str(st.secrets["TELEGRAM_CHAT_ID"])
         
         url = f"[https://api.telegram.org/bot](https://api.telegram.org/bot){token}/getUpdates"
         resp = requests.get(url).json()
         
         if "result" in resp:
-            # Scorriamo i messaggi dal più recente indietro
             messaggi = reversed(resp["result"])
-            
             for update in messaggi:
                 if "message" in update:
                     msg = update["message"]
                     sender_id = str(msg["from"]["id"])
                     timestamp = msg["date"]
                     testo = msg.get("text", "")
-                    
-                    # Controlla Data: Il messaggio è di oggi?
                     data_msg = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d")
                     
-                    # SE: Mittente sei tu, Data è oggi, Testo non è un comando (/stats)
                     if sender_id == admin_id and data_msg == oggi_str and not testo.startswith("/"):
-                        # TROVATO! È la tua dedica manuale.
-                        # Salviamola nel DB
                         sh = connect_db()
                         ws = sh.worksheet("Contenuti")
                         ws.append_row(["Manuale", "TelegramOverride", testo, oggi_str])
-                        
-                        # Ricarica pagina per mostrare subito il nuovo contenuto
                         st.rerun() 
                         return
     except Exception as e:
@@ -146,26 +134,19 @@ def get_contenuto(mood_target):
         df = pd.DataFrame(ws.get_all_records())
         oggi = datetime.now().strftime("%Y-%m-%d")
         
-        # Pulizia colonne
         if 'Data_Specifica' in df.columns:
             df['Data_Specifica'] = df['Data_Specifica'].astype(str)
         
-        # 0. Esegui controllo Override Telegram (Solo se siamo in mood Daily/Buongiorno)
         if mood_target == "Buongiorno":
             check_telegram_override(df)
-            # Rileggiamo il DF aggiornato se c'è stato un override (fatto tramite st.rerun sopra)
-            # Ma per sicurezza riprendiamo i dati se non c'è stato rerun
             
-        # 1. Priorità Manuale (Il tuo messaggio Telegram finisce qui)
         manuale = df[(df['Mood'] == 'Manuale') & (df['Data_Specifica'] == oggi)]
-        if not manuale.empty: return manuale.iloc[-1]['Link_Testo'] # Prende l'ultimo inserito
+        if not manuale.empty: return manuale.iloc[-1]['Link_Testo']
             
-        # 2. Priorità Buongiorno Oggi
         if mood_target == "Buongiorno":
             daily = df[(df['Mood'] == 'Buongiorno') & (df['Data_Specifica'] == oggi)]
             if not daily.empty: return daily.iloc[-1]['Link_Testo']
             
-        # 3. Pesca Casuale
         filtro = df[df['Mood'] == mood_target]
         if filtro.empty: return "Ti amo ❤️ (Nessuna frase trovata)"
         return filtro.sample().iloc[0]['Link_Testo']
@@ -176,9 +157,7 @@ def get_contenuto(mood_target):
 # --- CALENDARIO EVENTI ---
 def check_special_event():
     now = datetime.now()
-    
-    # IMPORTANTE: Rimetti datetime.now() dopo i test!
-    # now = datetime(2026, 3, 14, 10, 0, 0) # RIGA PER TEST (da commentare)
+    # now = datetime(2026, 3, 14, 10, 0, 0) # TEST: Decommenta per testare Mesiversario
     
     start_date = datetime(2022, 2, 14, 0, 0, 0)
     
@@ -241,7 +220,6 @@ elif mode == "daily":
     else:
         st.markdown("## Buongiorno Amore")
         st.divider()
-        # Qui avviene la magia del controllo manuale Telegram
         frase = get_contenuto('Buongiorno')
         st.markdown(f"<h3 style='text-align: center; color: #444;'>{frase}</h3>", unsafe_allow_html=True)
 
