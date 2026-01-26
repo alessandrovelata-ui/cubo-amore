@@ -6,11 +6,12 @@ from google.oauth2.service_account import Credentials
 import requests
 import json
 import agente_ia
+import random
 
 # --- CONFIGURAZIONE ---
 st.set_page_config(page_title="Cubo Amore", page_icon="❤️", layout="centered")
 
-# --- CSS ESTETICO ---
+# --- CSS ---
 hide_st_style = """
             <style>
             .stApp { background-color: #FFF5F7; }
@@ -19,20 +20,17 @@ hide_st_style = """
             header {visibility: hidden;}
             [data-testid="stToolbar"] {visibility: hidden;}
             .stDeployButton {display:none;}
-            
             h1 { color: #D64161 !important; text-align: center; font-family: 'Helvetica Neue', sans-serif; font-weight: 700; text-shadow: 1px 1px 2px rgba(0,0,0,0.1); margin-bottom: 20px; }
             h2, h3, p, div { color: #4A4A4A !important; text-align: center; }
-            
             .counter-box { background-color: #fff; border: 2px solid #D64161; border-radius: 15px; padding: 15px; margin-top: 10px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
             .counter-big { font-size: 1.2em; font-weight: bold; color: #D64161 !important; }
-            
             .stButton>button { width: 100%; height: 3.5em; font-size: 20px !important; font-weight: 600; background-color: #ffffff; color: #D64161; border: 2px solid #FFD1DC; border-radius: 25px; box-shadow: 0 4px 6px rgba(214, 65, 97, 0.1); transition: all 0.3s ease; }
             .stButton>button:hover { border-color: #D64161; background-color: #FFF0F5; transform: translateY(-2px); }
             </style>
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
 
-# --- CONNESSIONE DB ---
+# --- DB ---
 def connect_db():
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     json_creds = json.loads(st.secrets["GOOGLE_SHEETS_JSON"])
@@ -55,24 +53,18 @@ def salva_log(mood):
         ws.append_row([datetime.now().strftime("%Y-%m-%d"), datetime.now().strftime("%H:%M"), mood])
     except: pass
 
-# --- FUNZIONE: SEGNA COME LETTO ---
 def segna_messaggio_letto(sh, riga_index):
     try:
         ws = sh.worksheet("Contenuti")
         ws.update_cell(riga_index, 1, "Manuale_Letto")
-    except Exception as e:
-        print(f"Errore DB: {e}")
+    except: pass
 
 # --- OVERRIDE TELEGRAM ---
 def check_telegram_override(df_contenuti):
     try:
         oggi_str = datetime.now().strftime("%Y-%m-%d")
         if not df_contenuti.empty and 'Data_Specifica' in df_contenuti.columns:
-             # Se esiste già un manuale per oggi, stop
-             check = df_contenuti[
-                 (df_contenuti['Mood'].str.contains('Manuale')) & 
-                 (df_contenuti['Data_Specifica'].astype(str) == oggi_str)
-             ]
+             check = df_contenuti[(df_contenuti['Mood'].str.contains('Manuale')) & (df_contenuti['Data_Specifica'].astype(str) == oggi_str)]
              if not check.empty: return 
         
         token = st.secrets["TELEGRAM_TOKEN"]
@@ -89,7 +81,6 @@ def check_telegram_override(df_contenuti):
                     timestamp = msg["date"]
                     testo = msg.get("text", "")
                     data_msg = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d")
-                    
                     if sender_id == admin_id and data_msg == oggi_str and not testo.startswith("/"):
                         sh = connect_db()
                         ws = sh.worksheet("Contenuti")
@@ -109,19 +100,18 @@ def get_contenuto(mood_target):
         if 'Data_Specifica' in df.columns:
             df['Data_Specifica'] = df['Data_Specifica'].astype(str)
         
-        # 1. CONTROLLO TELEGRAM (Solo su Buongiorno)
+        # 1. CONTROLLO TELEGRAM
         if mood_target == "Buongiorno":
             check_telegram_override(df)
-            df = pd.DataFrame(ws.get_all_records()) # Ricarica
+            df = pd.DataFrame(ws.get_all_records())
             if 'Data_Specifica' in df.columns: df['Data_Specifica'] = df['Data_Specifica'].astype(str)
 
-        # 2. MESSAGGIO MANUALE (Solo su Buongiorno)
+        # 2. MESSAGGIO MANUALE
         if mood_target == "Buongiorno":
             indices = df.index[(df['Mood'] == 'Manuale') & (df['Data_Specifica'] == oggi)].tolist()
             if indices:
                 idx = indices[-1]
                 messaggio = df.iloc[idx]['Link_Testo']
-                # Segna come letto
                 segna_messaggio_letto(sh, idx + 2) 
                 return messaggio
 
@@ -133,11 +123,10 @@ def get_contenuto(mood_target):
         filtro = df[df['Mood'] == mood_target]
         if filtro.empty: return "Ti amo ❤️"
         return filtro.sample().iloc[0]['Link_Testo']
-
     except Exception as e:
         return f"Amore infinito ❤️ ({str(e)})"
 
-# --- CALENDARIO EVENTI ---
+# --- CALENDARIO EVENTI (PRIORITÀ ASSOLUTA) ---
 def check_special_event():
     now = datetime.now()
     start_date = datetime(2022, 2, 14, 0, 0, 0)
@@ -186,14 +175,16 @@ if mode == "admin":
     st.markdown("### 🛠️ Centro di Controllo")
     pwd = st.text_input("Password", type="password")
     if pwd == "1234":
-        if st.button("🚀 GENERA CONTENUTI MESE (Start: Oggi)"):
-            with st.spinner("Generazione ottimizzata in corso..."):
+        if st.button("🚀 AGGIORNA FRASI (4 Settimane)"):
+            with st.spinner("Genero nuove frasi partendo dall'ultima data..."):
                 report = agente_ia.run_agent()
                 st.write(report)
-                st.success("Operazione completata!")
+                st.success("Fatto!")
 
 elif mode == "daily":
     st.title("☀️")
+    
+    # 1. CONTROLLO EVENTI SPECIALI (VINCE SU TUTTO)
     titolo_speciale, msg_speciale, counter_info = check_special_event()
     
     if titolo_speciale:
@@ -203,6 +194,7 @@ elif mode == "daily":
             st.markdown(f"""<div class="counter-box"><p class="counter-big">⏳ Il nostro tempo</p><p>{counter_info}</p></div>""", unsafe_allow_html=True)
         st.balloons()
     else:
+        # 2. SE NESSUN EVENTO, MOSTRA FRASE (MANUALE O IA)
         st.markdown("## Buongiorno Amore")
         st.divider()
         frase = get_contenuto('Buongiorno')
@@ -213,7 +205,6 @@ elif mode == "mood":
     st.write("") 
     c1, c2 = st.columns(2)
     c3, c4 = st.columns(2)
-    
     if c1.button("😔 Triste"):
         salva_log("Triste")
         notifica_telegram("⚠️ LEI È TRISTE")
