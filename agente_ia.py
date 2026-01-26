@@ -33,7 +33,7 @@ def analizza_e_salva_stats(client):
         
         if df.empty: return "Nessun dato nel Log."
 
-        colonna_mood = df.columns[2] # Assumiamo colonna 3 = Mood
+        colonna_mood = df.columns[2] 
         conteggio = df[colonna_mood].value_counts().to_dict()
         
         oggi = datetime.now()
@@ -97,27 +97,21 @@ def run_agent():
 
         for m in moods:
             try:
-                # --- PROMPT CORRETTO PER EVITARE ERRORE JSON ---
-                # Abbiamo aggiunto la regola sulle virgolette singole/doppie
+                # Prompt ottimizzato con virgolette singole per sicurezza JSON
                 prompt = f"""
                 Sei un fidanzato innamorato. Genera un array JSON di 7 frasi per il mood: {m}.
                 
                 REGOLE TASSATIVE:
                 1. Genera 5 frasi originali e dolci.
                 2. Genera 2 CITAZIONI (Film, Libri, Canzoni).
-                3. IMPORTANTE: All'interno del testo delle frasi, usa SOLO l'apice singolo ('). 
-                   NON usare MAI virgolette doppie (") all'interno del testo, altrimenti rompi il codice.
-                   Esempio GIUSTO: "L'amore conta"
-                   Esempio SBAGLIATO: "L"amore" conta"
-                4. Evita queste frasi recenti: {str(frasi_usate_recenti[-15:])}
+                3. IMPORTANTE: Usa SOLO l'apice singolo (') nel testo. NON usare virgolette doppie (").
+                4. Evita queste frasi: {str(frasi_usate_recenti[-15:])}
                 
                 OUTPUT: Solo JSON Array di stringhe. Esempio: ["Frase 1", "Frase 2"]
                 """
 
                 response = model.generate_content(prompt)
                 
-                # --- PULIZIA DI SICUREZZA ---
-                # A volte il modello mette testo prima o dopo il JSON. Puliamo.
                 text_clean = response.text.strip()
                 if "```json" in text_clean:
                     text_clean = text_clean.replace("```json", "").replace("```", "")
@@ -140,33 +134,21 @@ def run_agent():
                 report_log.append(f"✅ {m}: +{local_count}")
                 time.sleep(5) 
                 
-            except json.JSONDecodeError as e_json:
-                # Se fallisce il JSON, proviamo a salvare l'errore specifico ma continuiamo
-                err = f"❌ Errore Formato JSON su {m}. Riprovo al prossimo giro."
-                report_log.append(err)
-                print(f"JSON Error content: {response.text}")
-                time.sleep(5)
             except Exception as e:
                 err = f"❌ Errore {m}: {e}"
                 report_log.append(err)
                 time.sleep(5)
 
-        # REPORT FINALE
         stats_text = analizza_e_salva_stats(client)
         
-        messaggio_finale = f"✅ **AGENTE COMPLETATO**\n"
-        messaggio_finale += f"Frasi create: {totale_generate}\n"
+        messaggio_finale = f"✅ **AGENTE COMPLETATO**\nFrasi create: {totale_generate}\n"
         messaggio_finale += "\n".join(report_log)
         messaggio_finale += f"\n{stats_text}"
         
         invia_notifica_telegram(messaggio_finale)
-        
         return report_log
 
     except Exception as e_critico:
         err_msg = f"❌ ERRORE CRITICO: {str(e_critico)}"
         invia_notifica_telegram(err_msg)
         return [err_msg]
-
-if __name__ == "__main__":
-    print(run_agent())
