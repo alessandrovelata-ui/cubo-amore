@@ -55,16 +55,20 @@ def salva_log(mood):
 
 def segna_messaggio_letto(sh, riga_index):
     try:
-        ws = sh.worksheet("Contenuti")
-        ws.update_cell(riga_index, 1, "Manuale_Letto")
-    except: pass
+        ws = sh.worksheet("Calendario") # Nota: Ora è nel calendario
+        # Nel calendario la colonna Mood è la 2 (Data, Mood, Frase...)
+        # Cambiamo "Manuale" in "Manuale_Letto"
+        ws.update_cell(riga_index, 2, "Manuale_Letto")
+    except Exception as e:
+        print(f"Err update: {e}")
 
 # --- OVERRIDE TELEGRAM ---
-def check_telegram_override(df_contenuti):
+def check_telegram_override(df_cal):
     try:
         oggi_str = datetime.now().strftime("%Y-%m-%d")
-        if not df_contenuti.empty and 'Data_Specifica' in df_contenuti.columns:
-             check = df_contenuti[(df_contenuti['Mood'].str.contains('Manuale')) & (df_contenuti['Data_Specifica'].astype(str) == oggi_str)]
+        if not df_cal.empty and 'Data' in df_cal.columns:
+             # Cerca nel Calendario
+             check = df_cal[(df_cal['Mood'].str.contains('Manuale')) & (df_cal['Data'].astype(str) == oggi_str)]
              if not check.empty: return 
         
         token = st.secrets["TELEGRAM_TOKEN"]
@@ -83,54 +87,57 @@ def check_telegram_override(df_contenuti):
                     data_msg = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d")
                     if sender_id == admin_id and data_msg == oggi_str and not testo.startswith("/"):
                         sh = connect_db()
-                        ws = sh.worksheet("Contenuti")
-                        ws.append_row(["Manuale", "TelegramOverride", testo, oggi_str])
+                        ws = sh.worksheet("Calendario") # Scrive nel Calendario
+                        # [Data, Mood, Frase, Tipo, Marker]
+                        ws.append_row([oggi_str, "Manuale", testo, "TelegramOverride", ""])
                         st.rerun() 
                         return
     except: pass
 
-# --- RECUPERO CONTENUTI ---
+# --- RECUPERO CONTENUTI (NUOVA LOGICA) ---
 def get_contenuto(mood_target):
     try:
         sh = connect_db()
-        ws = sh.worksheet("Contenuti")
-        df = pd.DataFrame(ws.get_all_records())
         oggi = datetime.now().strftime("%Y-%m-%d")
-        
-        if 'Data_Specifica' in df.columns:
-            df['Data_Specifica'] = df['Data_Specifica'].astype(str)
-        
-        # 1. CONTROLLO TELEGRAM
-        if mood_target == "Buongiorno":
-            check_telegram_override(df)
-            df = pd.DataFrame(ws.get_all_records())
-            if 'Data_Specifica' in df.columns: df['Data_Specifica'] = df['Data_Specifica'].astype(str)
 
-        # 2. MESSAGGIO MANUALE
+        # CASO 1: BUONGIORNO (Legge da CALENDARIO)
         if mood_target == "Buongiorno":
-            indices = df.index[(df['Mood'] == 'Manuale') & (df['Data_Specifica'] == oggi)].tolist()
+            ws = sh.worksheet("Calendario")
+            df = pd.DataFrame(ws.get_all_records())
+            
+            # Check Override
+            check_telegram_override(df)
+            df = pd.DataFrame(ws.get_all_records()) # Reload
+            
+            # Cerca Manuale
+            indices = df.index[(df['Mood'] == 'Manuale') & (df['Data'] == oggi)].tolist()
             if indices:
                 idx = indices[-1]
-                messaggio = df.iloc[idx]['Link_Testo']
-                segna_messaggio_letto(sh, idx + 2) 
+                messaggio = df.iloc[idx]['Frase']
+                segna_messaggio_letto(sh, idx + 2)
                 return messaggio
-
-        # 3. AUTOMATICO
-        if mood_target == "Buongiorno":
-            daily = df[(df['Mood'] == 'Buongiorno') & (df['Data_Specifica'] == oggi)]
-            if not daily.empty: return daily.iloc[-1]['Link_Testo']
             
-        filtro = df[df['Mood'] == mood_target]
-        if filtro.empty: return "Ti amo ❤️"
-        return filtro.sample().iloc[0]['Link_Testo']
+            # Cerca Buongiorno Automatico
+            daily = df[(df['Mood'] == 'Buongiorno') & (df['Data'] == oggi)]
+            if not daily.empty: return daily.iloc[-1]['Frase']
+            return "Ti amo ❤️ (Calendario in aggiornamento)"
+
+        # CASO 2: EMOZIONI (Legge da EMOZIONI)
+        else:
+            ws = sh.worksheet("Emozioni")
+            df = pd.DataFrame(ws.get_all_records())
+            
+            filtro = df[df['Mood'] == mood_target]
+            if filtro.empty: return "Ti amo ❤️"
+            return filtro.sample().iloc[0]['Frase']
+
     except Exception as e:
         return f"Amore infinito ❤️ ({str(e)})"
 
-# --- CALENDARIO EVENTI (PRIORITÀ ASSOLUTA) ---
+# --- CALENDARIO EVENTI ---
 def check_special_event():
     now = datetime.now()
     start_date = datetime(2022, 2, 14, 0, 0, 0)
-    
     delta = now - start_date
     giorni_totali = delta.days
     ore_totali = int(delta.total_seconds() // 3600)
@@ -142,20 +149,17 @@ def check_special_event():
     if now.day < start_date.day: mesi_diff -= 1
     mesi_reali = mesi_diff % 12
     
-    # ANNIVERSARIO
     if now.month == 2 and now.day == 14:
         citazione = "\n\n\"Tu sei ogni ragione, ogni speranza e ogni sogno che abbia mai avuto.\" – Le pagine della nostra vita"
         msg = f"Buon Anniversario! ❤️\n{anni} anni di Noi.{citazione}"
         counter = f"Esattamente: {giorni_totali} giorni e {ore_totali} ore insieme!"
         return "🎉 Anniversario", msg, counter
         
-    # MESIVERSARIO
     if now.day == 14:
         msg = f"Buon Mesiversario! 🌹\n{anni} Anni e {mesi_reali} Mesi."
         counter = f"Il contatore segna: {giorni_totali} giorni totali."
         return "🌹 Mesiversario", msg, counter
 
-    # ALTRI EVENTI
     if now.month == 4 and now.day == 12:
         return "🎂 Buon Compleanno!", "Tanti auguri al mio Sole! Sei il regalo più bello.", None
     if now.month == 6 and now.day in [20, 21]:
@@ -175,16 +179,14 @@ if mode == "admin":
     st.markdown("### 🛠️ Centro di Controllo")
     pwd = st.text_input("Password", type="password")
     if pwd == "1234":
-        if st.button("🚀 AGGIORNA FRASI (4 Settimane)"):
-            with st.spinner("Genero nuove frasi partendo dall'ultima data..."):
+        if st.button("🚀 AGGIORNA FOGLI (4 Settimane)"):
+            with st.spinner("Genero Calendario e Emozioni separati..."):
                 report = agente_ia.run_agent()
                 st.write(report)
                 st.success("Fatto!")
 
 elif mode == "daily":
     st.title("☀️")
-    
-    # 1. CONTROLLO EVENTI SPECIALI (VINCE SU TUTTO)
     titolo_speciale, msg_speciale, counter_info = check_special_event()
     
     if titolo_speciale:
@@ -194,7 +196,6 @@ elif mode == "daily":
             st.markdown(f"""<div class="counter-box"><p class="counter-big">⏳ Il nostro tempo</p><p>{counter_info}</p></div>""", unsafe_allow_html=True)
         st.balloons()
     else:
-        # 2. SE NESSUN EVENTO, MOSTRA FRASE (MANUALE O IA)
         st.markdown("## Buongiorno Amore")
         st.divider()
         frase = get_contenuto('Buongiorno')
