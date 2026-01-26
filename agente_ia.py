@@ -1,8 +1,8 @@
 import os
 import pandas as pd
 import gspread
+from google.oauth2.service_account import Credentials # <--- NUOVA LIBRERIA
 import google.generativeai as genai
-from oauth2client.service_account import ServiceAccountCredentials
 import json
 import streamlit as st
 import time
@@ -61,7 +61,7 @@ def analizza_e_salva_stats(client):
 # --- MOTORE AGENTE (VERSIONE MENSILE) ---
 def run_agent():
     try:
-        # 1. SETUP
+        # 1. SETUP NUOVO SISTEMA DI AUTENTICAZIONE
         try:
             GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
             creds_dict = json.loads(st.secrets["GOOGLE_SHEETS_JSON"])
@@ -72,16 +72,22 @@ def run_agent():
 
         genai.configure(api_key=GEMINI_KEY)
         
-        scope = ["https://spreadsheets.google.com/feeds",'https://www.googleapis.com/auth/drive']
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        # --- MODIFICA FONDAMENTALE QUI SOTTO ---
+        scope = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ]
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
         client = gspread.authorize(creds)
+        # ----------------------------------------
+        
         sheet = client.open("CuboAmoreDB").worksheet("Contenuti")
         
         # 2. MEMORIA
         df = pd.DataFrame(sheet.get_all_records())
         frasi_usate_recenti = []
         if not df.empty and 'Link_Testo' in df.columns:
-            frasi_usate_recenti = df['Link_Testo'].tail(200).tolist() # Aumentata memoria per il mese
+            frasi_usate_recenti = df['Link_Testo'].tail(200).tolist()
 
         # 3. MODELLO
         generation_config = {
@@ -105,7 +111,6 @@ def run_agent():
             
             for m in moods:
                 try:
-                    # Prompt Mensile
                     prompt = f"""
                     Sei un fidanzato innamorato. Genera un array JSON di 7 frasi uniche per il mood: {m}.
                     
@@ -119,7 +124,6 @@ def run_agent():
 
                     response = model.generate_content(prompt)
                     
-                    # Pulizia JSON
                     text_clean = response.text.strip()
                     if "```json" in text_clean:
                         text_clean = text_clean.replace("```json", "").replace("```", "")
@@ -131,31 +135,28 @@ def run_agent():
                         if frase in frasi_usate_recenti: continue 
                         
                         data_str = ""
-                        # Se è Buongiorno, calcoliamo la data esatta progressiva
                         if m == "Buongiorno":
-                            # Data = Oggi + Offset Settimana + Indice Giorno (0-6)
                             giorni_da_aggiungere = offset_giorni_settimana + local_count
                             data_target = oggi + timedelta(days=giorni_da_aggiungere)
                             data_str = data_target.strftime("%Y-%m-%d")
                         
                         sheet.append_row([m, "Frase", frase, data_str])
-                        frasi_usate_recenti.append(frase) # Aggiorna memoria live
+                        frasi_usate_recenti.append(frase)
                         local_count += 1
                     
                     totale_generate += local_count
                     report_log.append(f"   - {m}: +{local_count}")
-                    time.sleep(3) # Pausa tra i mood
+                    time.sleep(2) 
                     
                 except Exception as e:
                     report_log.append(f"   ❌ Errore {m}: {e}")
                     time.sleep(5)
             
-            # Pausa extra tra le settimane per non saturare le API
-            time.sleep(5)
+            time.sleep(3)
 
         stats_text = analizza_e_salva_stats(client)
         
-        messaggio_finale = f"✅ **GENERAZIONE MENSILE COMPLETATA**\nFrasi totali create: {totale_generate}\n"
+        messaggio_finale = f"✅ **GENERAZIONE COMPLETATA**\nFrasi create: {totale_generate}\n"
         messaggio_finale += f"\n{stats_text}"
         
         invia_notifica_telegram(messaggio_finale)
