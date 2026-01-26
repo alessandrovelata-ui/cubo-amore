@@ -6,13 +6,12 @@ from oauth2client.service_account import ServiceAccountCredentials
 import json
 import streamlit as st
 import time
-import requests # Serve per le notifiche
+import requests
 from datetime import datetime, timedelta
 
 # --- FUNZIONE DI SUPPORTO: NOTIFICA TELEGRAM ---
 def invia_notifica_telegram(testo):
     try:
-        # Recupera i segreti (funziona sia su Streamlit Cloud che locale)
         try:
             TOKEN = st.secrets["TELEGRAM_TOKEN"]
             CHAT_ID = st.secrets["TELEGRAM_CHAT_ID"]
@@ -26,42 +25,31 @@ def invia_notifica_telegram(testo):
     except Exception as e:
         print(f"Errore invio Telegram: {e}")
 
-# --- FUNZIONE DI SUPPORTO: CALCOLO E SALVATAGGIO STATISTICHE ---
+# --- FUNZIONE DI SUPPORTO: STATISTICHE ---
 def analizza_e_salva_stats(client):
     try:
-        # 1. Leggi i dati dal log
         sheet_log = client.open("CuboAmoreDB").worksheet("Log_Mood")
         df = pd.DataFrame(sheet_log.get_all_records())
         
-        if df.empty:
-            return "Nessun dato nel Log."
+        if df.empty: return "Nessun dato nel Log."
 
-        # Assumiamo che le colonne siano: Data, Ora, Mood (Indice 0, 1, 2)
-        # Filtriamo gli ultimi 7 giorni
-        oggi = datetime.now()
-        sette_giorni_fa = today = datetime.now() - timedelta(days=7)
-        
-        # Statistiche semplici (conta totale per Mood)
-        colonna_mood = df.columns[2] # Terza colonna
+        # Statistiche ultimi 7 giorni
+        colonna_mood = df.columns[2] 
         conteggio = df[colonna_mood].value_counts().to_dict()
         
-        # 2. Prepara il report testuale per Telegram
+        oggi = datetime.now()
         report_text = "\n📊 **Report Settimanale:**\n"
-        riga_excel = [oggi.strftime("%Y-%m-%d")] # Iniziamo la riga per l'Excel con la data
+        riga_excel = [oggi.strftime("%Y-%m-%d")]
         
-        # Ordine fisso per Excel: Triste, Felice, Nostalgica, Stressata
         moods_order = ["Triste", "Felice", "Nostalgica", "Stressata"]
-        
         for m in moods_order:
             num = conteggio.get(m, 0)
             report_text += f"- {m}: {num}\n"
             riga_excel.append(num)
 
-        # 3. Salva nel nuovo foglio "Report_Settimanali"
         try:
             sheet_report = client.open("CuboAmoreDB").worksheet("Report_Settimanali")
         except:
-            # Se non esiste, lo crea
             sheet_report = client.open("CuboAmoreDB").add_worksheet(title="Report_Settimanali", rows=100, cols=10)
             sheet_report.append_row(["Data Report", "Triste", "Felice", "Nostalgica", "Stressata"])
         
@@ -69,7 +57,7 @@ def analizza_e_salva_stats(client):
         return report_text
 
     except Exception as e:
-        return f"\n⚠️ Errore calcolo statistiche: {e}"
+        return f"\n⚠️ Errore statistiche: {e}"
 
 # --- FUNZIONE PRINCIPALE ---
 def run_agent():
@@ -85,41 +73,42 @@ def run_agent():
 
         genai.configure(api_key=GEMINI_KEY)
         
-        # CONNESSIONE DB
         scope = ["https://spreadsheets.google.com/feeds",'https://www.googleapis.com/auth/drive']
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
         sheet = client.open("CuboAmoreDB").worksheet("Contenuti")
         
-        # MEMORIA ANTI-DUPLICATI
+        # MEMORIA
         df = pd.DataFrame(sheet.get_all_records())
         frasi_usate_recenti = []
         if not df.empty and 'Link_Testo' in df.columns:
             frasi_usate_recenti = df['Link_Testo'].tail(150).tolist()
 
-        # CONFIGURAZIONE MODELLO (Fix Errore Virgola)
+        # --- MOTORE GEMINI PRO ---
+        # Impostiamo il modello PRO richiesto
+        # Usiamo response_mime_type per forzare il JSON ed evitare errori di virgole
         generation_config = {
-            "temperature": 1,
+            "temperature": 1, 
             "response_mime_type": "application/json",
         }
-        model = genai.GenerativeModel('gemini-2.5-flash', generation_config=generation_config)
+        
+        # NOTA: Se 'gemini-2.5-pro' ti dà errore 404, prova 'gemini-1.5-pro'
+        model = genai.GenerativeModel('gemini-2.5-pro', generation_config=generation_config)
         
         report_log = []
         moods = ["Buongiorno", "Triste", "Felice", "Nostalgica", "Stressata"]
         oggi = datetime.now()
         totale_generate = 0
 
-        # --- CICLO DI GENERAZIONE ---
         for m in moods:
             try:
-                # Prompt con Citazioni e Batch 7x
                 prompt = f"""
-                Sei un fidanzato innamorato. Genera un array JSON di 7 frasi diverse per il mood: {m}.
+                Sei un fidanzato poeta e innamorato. Genera un array JSON di 7 frasi uniche per il mood: {m}.
                 
                 REGOLE:
-                - 5 frasi tue: dolci, brevi (max 15 parole).
-                - 2 frasi CITAZIONI: usa citazioni famose (Film, Canzoni, Libri) adatte al mood. Metti l'autore tra parentesi.
-                - MEMORIA: Evita assolutamente queste frasi recenti: {str(frasi_usate_recenti[-15:])}
+                - 5 frasi tue: profonde, emotive, dolci (max 20 parole).
+                - 2 frasi CITAZIONI: usa citazioni d'autore (Film, Poeti, Canzoni) coerenti. Metti autore tra parentesi.
+                - MEMORIA: NON usare queste frasi recenti: {str(frasi_usate_recenti[-15:])}
                 
                 OUTPUT: Solo JSON Array di stringhe. Esempio: ["Frase 1", "Frase 2 (Autore)"]
                 """
@@ -140,18 +129,24 @@ def run_agent():
                     local_count += 1
                 
                 totale_generate += local_count
-                report_log.append(f"✅ {m}: +{local_count}")
-                time.sleep(5) # Pausa veloce
+                report_log.append(f"✅ {m} (Pro): +{local_count}")
+                
+                # --- PAUSA PRO (30 Secondi) ---
+                # I modelli Pro hanno limiti più bassi (RPM). 
+                # Aumentiamo la pausa per evitare il blocco "429 Quota Exceeded".
+                time.sleep(30) 
                 
             except Exception as e:
-                report_log.append(f"❌ Errore {m}: {e}")
-                invia_notifica_telegram(f"⚠️ Errore parziale durante {m}: {str(e)}")
-                time.sleep(5)
+                err = f"❌ Errore {m}: {e}"
+                report_log.append(err)
+                # Se fallisce, potrebbe essere per il nome del modello o rate limit
+                invia_notifica_telegram(f"⚠️ {err}")
+                time.sleep(30)
 
-        # --- FASE FINALE: STATISTICHE E NOTIFICA ---
+        # REPORT FINALE
         stats_text = analizza_e_salva_stats(client)
         
-        messaggio_finale = f"✅ **AGENTE COMPLETATO**\n\n"
+        messaggio_finale = f"✅ **AGENTE PRO COMPLETATO**\n\n"
         messaggio_finale += f"Frasi create: {totale_generate}\n"
         messaggio_finale += "\n".join(report_log)
         messaggio_finale += f"\n{stats_text}"
