@@ -5,12 +5,10 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import requests
 import json
-import agente_ia # Importiamo il cervello IA per il test manuale
+import agente_ia
 
-# --- CONFIGURAZIONE ---
 st.set_page_config(page_title="Il Nostro Cubo", page_icon="🧊")
 
-# Funzione DB
 def connect_db():
     scope = ["https://spreadsheets.google.com/feeds",'https://www.googleapis.com/auth/drive']
     json_creds = json.loads(st.secrets["GOOGLE_SHEETS_JSON"])
@@ -18,7 +16,6 @@ def connect_db():
     client = gspread.authorize(creds)
     return client.open("CuboAmoreDB") 
 
-# Funzione Telegram
 def notifica_telegram(testo):
     try:
         token = st.secrets.get("TELEGRAM_TOKEN")
@@ -29,28 +26,44 @@ def notifica_telegram(testo):
     except:
         pass
 
-# Funzione Contenuti
+# --- FUNZIONE CONTENUTI AGGIORNATA ---
 def get_contenuto(mood_target):
     try:
         sh = connect_db()
         ws = sh.worksheet("Contenuti")
         df = pd.DataFrame(ws.get_all_records())
         
-        # 1. Priorità Manuale (Oggi)
         oggi = datetime.now().strftime("%Y-%m-%d")
-        if 'Mood' in df.columns and 'Data_Specifica' in df.columns:
-             # Converte in stringa per evitare errori di tipo
-            df['Data_Specifica'] = df['Data_Specifica'].astype(str)
-            manuale = df[(df['Mood'] == 'Manuale') & (df['Data_Specifica'] == oggi)]
-            if not manuale.empty:
-                return manuale.iloc[0]['Link_Testo']
         
-        # 2. Pesca dal Database
+        # Convertiamo la colonna Data in stringa per sicurezza
+        if 'Data_Specifica' in df.columns:
+            df['Data_Specifica'] = df['Data_Specifica'].astype(str)
+        
+        # 1. PRIORITÀ ASSOLUTA: Messaggio MANUALE per oggi (scritto da te)
+        manuale = df[(df['Mood'] == 'Manuale') & (df['Data_Specifica'] == oggi)]
+        if not manuale.empty:
+            return manuale.iloc[0]['Link_Testo']
+            
+        # 2. PRIORITÀ ALTA: Buongiorno IA generato per OGGI
+        if mood_target == "Buongiorno":
+            buongiorno_oggi = df[(df['Mood'] == 'Buongiorno') & (df['Data_Specifica'] == oggi)]
+            if not buongiorno_oggi.empty:
+                # Prende l'ultimo generato per oggi (in caso di duplicati)
+                return buongiorno_oggi.iloc[-1]['Link_Testo']
+        
+        # 3. STANDARD: Pesca a caso dal mazzo (per Mood o Buongiorno generici)
+        # Filtra per mood
         filtro = df[df['Mood'] == mood_target]
+        
+        # Se stiamo cercando un Buongiorno ma non c'è quello di oggi, prendiamone uno generico (senza data o data vecchia)
+        if mood_target == "Buongiorno" and filtro.empty:
+             return "Buongiorno amore mio! (Oggi il server dorme, ma io ti amo)"
+
         if filtro.empty:
-            return "Non ho trovato frasi per questo mood, ma ti amo lo stesso. ❤️"
+            return "Non ho trovato frasi, ma ti amo lo stesso. ❤️"
             
         return filtro.sample().iloc[0]['Link_Testo']
+
     except Exception as e:
         return f"Errore: {str(e)}"
 
@@ -66,61 +79,43 @@ def salva_log(mood):
 query_params = st.query_params
 mode = query_params.get("mode", "daily") 
 
-# 1. MODO GIORNALIERO (SOLE)
 if mode == "daily":
     st.title("☀️ Buongiorno Amore")
     frase = get_contenuto("Buongiorno")
     st.markdown(f"### *{frase}*")
     
-# 2. MODO EMOZIONI (LUNA) - ORA CON 4 BOTTONI
 elif mode == "mood":
     st.title("Come ti senti?")
-    
-    # Griglia 2x2
     col1, col2 = st.columns(2)
     col3, col4 = st.columns(2)
     
-    # Bottone 1: Triste
     if col1.button("😔 Triste"):
         salva_log("Triste")
         notifica_telegram("⚠️ LEI È TRISTE")
         st.info(get_contenuto("Triste"))
         
-    # Bottone 2: Felice
     if col2.button("🥰 Felice"):
         salva_log("Felice")
         notifica_telegram("ℹ️ Lei è felice!")
         st.balloons()
         st.success(get_contenuto("Felice"))
 
-    # Bottone 3: Nostalgica
     if col3.button("🕰️ Nostalgica"):
         salva_log("Nostalgica")
         notifica_telegram("ℹ️ Lei è nostalgica")
         st.warning(get_contenuto("Nostalgica"))
 
-    # Bottone 4: Stressata
     if col4.button("🤯 Stressata"):
         salva_log("Stressata")
-        notifica_telegram("⚠️ Lei è STRESSATA - Serve supporto")
+        notifica_telegram("⚠️ Lei è STRESSATA")
         st.error(get_contenuto("Stressata"))
 
-# 3. MODO ADMIN (TEST IA)
 elif mode == "admin":
     st.header("🛠️ Pannello Admin")
-    password = st.text_input("Password", type="password")
-    
-    if password == "1234": # Cambia la password se vuoi
-        st.success("Accesso effettuato")
-        
-        st.subheader("🤖 Test Intelligenza Artificiale")
-        st.write("Clicca qui sotto per far scrivere a Gemini 5 nuove frasi e salvarle nel DB.")
-        
-        if st.button("Lancia Agente IA Adesso"):
-            with st.spinner("Gemini sta pensando e scrivendo..."):
-                try:
-                    report = agente_ia.run_agent() # Chiama la funzione dell'altro file
-                    st.success("Operazione completata!")
-                    st.write(report) # Ti mostra cosa ha scritto
-                except Exception as e:
-                    st.error(f"Errore: {e}")
+    pwd = st.text_input("Password", type="password")
+    if pwd == "1234":
+        st.success("Loggato")
+        if st.button("Lancia Generazione Settimanale (Lungo)"):
+            with st.spinner("Sto generando 7 giorni di buongiorno e i mood... (Ci vorranno circa 3 minuti)"):
+                report = agente_ia.run_agent()
+                st.write(report)
