@@ -7,10 +7,10 @@ import requests
 import json
 import agente_ia
 
-# --- CONFIGURAZIONE PAGINA ---
+# --- CONFIGURAZIONE ---
 st.set_page_config(page_title="Cubo Amore", page_icon="❤️", layout="centered")
 
-# --- CSS: STILE ESTETICO AVANZATO ---
+# --- CSS ESTETICO (Il tuo stile rosa) ---
 hide_st_style = """
             <style>
             .stApp { background-color: #FFF5F7; }
@@ -28,12 +28,8 @@ hide_st_style = """
                 text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
                 margin-bottom: 20px;
             }
-            h2, h3, p, div {
-                color: #4A4A4A !important;
-                text-align: center;
-            }
+            h2, h3, p, div { color: #4A4A4A !important; text-align: center; }
             
-            /* Stile speciale per il Counter */
             .counter-box {
                 background-color: #fff;
                 border: 2px solid #D64161;
@@ -66,7 +62,7 @@ hide_st_style = """
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
 
-# --- FUNZIONI DI SERVIZIO ---
+# --- FUNZIONI UTILI ---
 def connect_db():
     scope = ["[https://spreadsheets.google.com/feeds](https://spreadsheets.google.com/feeds)",'[https://www.googleapis.com/auth/drive](https://www.googleapis.com/auth/drive)']
     json_creds = json.loads(st.secrets["GOOGLE_SHEETS_JSON"])
@@ -89,6 +85,60 @@ def salva_log(mood):
         ws.append_row([datetime.now().strftime("%Y-%m-%d"), datetime.now().strftime("%H:%M"), mood])
     except: pass
 
+# --- NUOVA FUNZIONE: CONTROLLO MESSAGGI MANUALI DA TELEGRAM ---
+def check_telegram_override(df_contenuti):
+    """
+    Controlla se c'è un messaggio manuale inviato OGGI su Telegram.
+    Se c'è e non è ancora nel DB, lo salva.
+    """
+    try:
+        # 1. Controlla se abbiamo già una frase Manuale per oggi nel DB (per evitare duplicati o sovrascritture)
+        oggi_str = datetime.now().strftime("%Y-%m-%d")
+        if not df_contenuti.empty and 'Data_Specifica' in df_contenuti.columns:
+             # Convertiamo in stringa per sicurezza
+             manuali_oggi = df_contenuti[
+                 (df_contenuti['Mood'] == 'Manuale') & 
+                 (df_contenuti['Data_Specifica'].astype(str) == oggi_str)
+             ]
+             if not manuali_oggi.empty:
+                 return # C'è già una frase manuale nel DB, usiamo quella.
+        
+        # 2. Se non c'è nel DB, chiediamo a Telegram
+        token = st.secrets["TELEGRAM_TOKEN"]
+        admin_id = str(st.secrets["TELEGRAM_CHAT_ID"]) # Il tuo ID
+        
+        url = f"[https://api.telegram.org/bot](https://api.telegram.org/bot){token}/getUpdates"
+        resp = requests.get(url).json()
+        
+        if "result" in resp:
+            # Scorriamo i messaggi dal più recente indietro
+            messaggi = reversed(resp["result"])
+            
+            for update in messaggi:
+                if "message" in update:
+                    msg = update["message"]
+                    sender_id = str(msg["from"]["id"])
+                    timestamp = msg["date"]
+                    testo = msg.get("text", "")
+                    
+                    # Controlla Data: Il messaggio è di oggi?
+                    data_msg = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d")
+                    
+                    # SE: Mittente sei tu, Data è oggi, Testo non è un comando (/stats)
+                    if sender_id == admin_id and data_msg == oggi_str and not testo.startswith("/"):
+                        # TROVATO! È la tua dedica manuale.
+                        # Salviamola nel DB
+                        sh = connect_db()
+                        ws = sh.worksheet("Contenuti")
+                        ws.append_row(["Manuale", "TelegramOverride", testo, oggi_str])
+                        
+                        # Ricarica pagina per mostrare subito il nuovo contenuto
+                        st.rerun() 
+                        return
+    except Exception as e:
+        print(f"Override check failed: {e}")
+
+# --- RECUPERO CONTENUTI ---
 def get_contenuto(mood_target):
     try:
         sh = connect_db()
@@ -96,77 +146,73 @@ def get_contenuto(mood_target):
         df = pd.DataFrame(ws.get_all_records())
         oggi = datetime.now().strftime("%Y-%m-%d")
         
+        # Pulizia colonne
         if 'Data_Specifica' in df.columns:
             df['Data_Specifica'] = df['Data_Specifica'].astype(str)
+        
+        # 0. Esegui controllo Override Telegram (Solo se siamo in mood Daily/Buongiorno)
+        if mood_target == "Buongiorno":
+            check_telegram_override(df)
+            # Rileggiamo il DF aggiornato se c'è stato un override (fatto tramite st.rerun sopra)
+            # Ma per sicurezza riprendiamo i dati se non c'è stato rerun
             
+        # 1. Priorità Manuale (Il tuo messaggio Telegram finisce qui)
         manuale = df[(df['Mood'] == 'Manuale') & (df['Data_Specifica'] == oggi)]
-        if not manuale.empty: return manuale.iloc[0]['Link_Testo']
+        if not manuale.empty: return manuale.iloc[-1]['Link_Testo'] # Prende l'ultimo inserito
             
+        # 2. Priorità Buongiorno Oggi
         if mood_target == "Buongiorno":
             daily = df[(df['Mood'] == 'Buongiorno') & (df['Data_Specifica'] == oggi)]
             if not daily.empty: return daily.iloc[-1]['Link_Testo']
             
+        # 3. Pesca Casuale
         filtro = df[df['Mood'] == mood_target]
-        if filtro.empty: return "Ti amo ❤️"
+        if filtro.empty: return "Ti amo ❤️ (Nessuna frase trovata)"
         return filtro.sample().iloc[0]['Link_Testo']
-    except: return "Ti amo all'infinito ❤️"
 
-# --- CALENDARIO SPECIALE E COUNTER ---
+    except Exception as e:
+        return f"Amore infinito ❤️ ({str(e)})"
+
+# --- CALENDARIO EVENTI ---
 def check_special_event():
     now = datetime.now()
     
-    # DATA INIZIO RELAZIONE: 14 Febbraio 2022
+    # IMPORTANTE: Rimetti datetime.now() dopo i test!
+    # now = datetime(2026, 3, 14, 10, 0, 0) # RIGA PER TEST (da commentare)
+    
     start_date = datetime(2022, 2, 14, 0, 0, 0)
     
-    # Calcoli Counter
     delta = now - start_date
     giorni_totali = delta.days
     ore_totali = int(delta.total_seconds() // 3600)
     
-    # Calcolo anni/mesi approssimato per display
     anni = now.year - start_date.year
-    if (now.month, now.day) < (start_date.month, start_date.day):
-        anni -= 1
+    if (now.month, now.day) < (start_date.month, start_date.day): anni -= 1
+    
     mesi_diff = (now.year - start_date.year) * 12 + now.month - start_date.month
-    if now.day < start_date.day:
-        mesi_diff -= 1
+    if now.day < start_date.day: mesi_diff -= 1
     mesi_reali = mesi_diff % 12
     
-    # --- LOGICA EVENTI ---
-    
-    # 1. ANNIVERSARIO (14 Febbraio)
     if now.month == 2 and now.day == 14:
-        msg = f"Buon Anniversario Amore Mio! ❤️\nSono passati esattamente {anni} anni."
-        counter = f"Ovvero {giorni_totali} giorni e {ore_totali} ore che mi sopporti! 😂❤️"
-        return "🎉 Anniversario", msg, counter
+        return "🎉 Anniversario", f"Buon Anniversario! ❤️\n{anni} anni di Noi.", f"Ovvero {giorni_totali} giorni e {ore_totali} ore!"
         
-    # 2. MESIVERSARIO (Giorno 14 di altri mesi)
     if now.day == 14:
-        msg = f"Buon Mesiversario! 🌹\n{anni} Anni e {mesi_reali} Mesi insieme."
-        counter = f"Il contatore segna: {giorni_totali} giorni totali di noi."
-        return "🌹 Mesiversario", msg, counter
+        return "🌹 Mesiversario", f"Buon Mesiversario! 🌹\n{anni} Anni e {mesi_reali} Mesi.", f"Il contatore segna: {giorni_totali} giorni totali."
 
-    # 3. COMPLEANNO LEI (12 Aprile)
     if now.month == 4 and now.day == 12:
-        return "🎂 Buon Compleanno!", "Tanti auguri al mio Sole! Sei il regalo più bello del mondo.", None
+        return "🎂 Buon Compleanno!", "Tanti auguri al mio Sole!", None
 
-    # 4. SOLSTIZI E EQUINOZI (Date approssimative fisse)
-    # Solstizio Estate (Sole)
     if now.month == 6 and now.day in [20, 21]:
-        return "☀️ Solstizio d'Estate", "Oggi è il giorno più lungo dell'anno, ma tu brilli più del sole.", None
-    # Solstizio Inverno
+        return "☀️ Solstizio d'Estate", "Il giorno più lungo per l'amore più grande.", None
     if now.month == 12 and now.day in [21, 22]:
-        return "❄️ Solstizio d'Inverno", "Fuori è la notte più lunga, ma tu sei la mia luce che scalda tutto.", None
-    
-    # 5. FESTIVITÀ CLASSICHE
-    if now.month == 12 and now.day == 25:
-        return "🎄 Buon Natale", "Il mio regalo sei tu. Ti amo!", None
-    if now.month == 1 and now.day == 1:
-        return "🥂 Buon Anno", "Un altro anno da scrivere insieme a te.", None
+        return "❄️ Solstizio d'Inverno", "La notte più lunga, illuminata da te.", None
+        
+    if now.month == 12 and now.day == 25: return "🎄 Buon Natale", "Il mio regalo sei tu.", None
+    if now.month == 1 and now.day == 1: return "🥂 Buon Anno", "Scriviamo un altro capitolo.", None
         
     return None, None, None
 
-# --- INTERFACCIA ---
+# --- UI ---
 query_params = st.query_params
 mode = query_params.get("mode", "daily")
 
@@ -174,8 +220,9 @@ if mode == "admin":
     st.markdown("### 🛠️ Centro di Controllo")
     pwd = st.text_input("Password", type="password")
     if pwd == "1234":
-        if st.button("🚀 LANCIA AGENTE"):
-            with st.spinner("Generazione in corso..."):
+        st.info("⚠️ La generazione mensile richiede circa 5 minuti.")
+        if st.button("🚀 LANCIA AGENTE (30 Giorni)"):
+            with st.spinner("Lavoro sodo per il prossimo mese..."):
                 report = agente_ia.run_agent()
                 st.write(report)
                 st.success("Fatto! Telegram avvisato.")
@@ -183,26 +230,18 @@ if mode == "admin":
 elif mode == "daily":
     st.title("☀️")
     
-    # Controllo Eventi Speciali
     titolo_speciale, msg_speciale, counter_info = check_special_event()
     
     if titolo_speciale:
-        # VISUALIZZAZIONE EVENTO SPECIALE
         st.markdown(f"<h1>{titolo_speciale}</h1>", unsafe_allow_html=True)
         st.markdown(f"<h3>{msg_speciale}</h3>", unsafe_allow_html=True)
-        
         if counter_info:
-            st.markdown(f"""
-            <div class="counter-box">
-                <p class="counter-big">⏳ Il nostro tempo</p>
-                <p>{counter_info}</p>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(f"""<div class="counter-box"><p class="counter-big">⏳ Il nostro tempo</p><p>{counter_info}</p></div>""", unsafe_allow_html=True)
         st.balloons()
     else:
-        # GIORNO NORMALE
         st.markdown("## Buongiorno Amore")
         st.divider()
+        # Qui avviene la magia del controllo manuale Telegram
         frase = get_contenuto('Buongiorno')
         st.markdown(f"<h3 style='text-align: center; color: #444;'>{frase}</h3>", unsafe_allow_html=True)
 
