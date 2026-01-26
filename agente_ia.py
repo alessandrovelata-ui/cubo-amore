@@ -7,7 +7,6 @@ import json
 import streamlit as st
 import time
 from datetime import datetime, timedelta
-import random
 
 def run_agent():
     # --- SETUP ---
@@ -27,80 +26,63 @@ def run_agent():
     client = gspread.authorize(creds)
     sheet = client.open("CuboAmoreDB").worksheet("Contenuti")
     
-    # --- MEMORIA (Anti-Repetizione) ---
-    # Scarichiamo tutto il DB per controllare i duplicati
+    # MEMORIA ANTI-DUPLICATI
     df = pd.DataFrame(sheet.get_all_records())
     frasi_usate_recenti = []
-    
     if not df.empty and 'Link_Testo' in df.columns:
-        # Prendiamo le ultime 100 frasi (circa 1 mese di storico abbondante)
         frasi_usate_recenti = df['Link_Testo'].tail(150).tolist()
 
-    model = genai.GenerativeModel('gemini-2.5-flash')
+    # CONFIGURAZIONE MODELLO PER JSON PURO
+    # Questo risolve l'errore "Expecting delimiter"
+    generation_config = {
+        "temperature": 1,
+        "response_mime_type": "application/json",
+    }
+    model = genai.GenerativeModel('gemini-2.5-flash', generation_config=generation_config)
+    
     report = []
-    
-    # Lista dei Mood da generare
     moods = ["Buongiorno", "Triste", "Felice", "Nostalgica", "Stressata"]
-    
     oggi = datetime.now()
 
     for m in moods:
         try:
-            # --- COSTRUZIONE DEL PROMPT INTELLIGENTE ---
-            # Chiediamo 7 frasi in un colpo solo (Batch) per risparmiare richieste API
-            
+            # PROMPT OTTIMIZZATO
             prompt = f"""
-            Agisci come un fidanzato innamorato e colto.
-            Il tuo compito è generare una lista JSON di 7 frasi diverse per il mood: {m}.
+            Sei un fidanzato innamorato. Genera una lista di 7 frasi per il mood: {m}.
             
-            REGOLE DI CONTENUTO:
-            - Totale frasi: 7
-            - 5 frasi devono essere pensieri tuoi, dolci e diretti (max 15 parole).
-            - 2 frasi DEVONO essere citazioni celebri (Film, Canzoni, Poesie, Libri) coerenti col mood.
-              Per le citazioni: metti la frase tra virgolette e l'autore/fonte alla fine.
-              Esempio citazione: "L'amor che move il sole e l'altre stelle." (Dante)
+            REGOLE:
+            - 5 frasi tue, originali, dolci (max 15 parole).
+            - 2 frasi DEVONO essere citazioni celebri (Film, Libri, Canzoni) coerenti col mood.
+            - NON usare mai queste frasi recenti: {str(frasi_usate_recenti[-10:])}
             
-            REGOLE DI MEMORIA:
-            - NON generare frasi uguali o troppo simili a queste usate di recente: {str(frasi_usate_recenti[-20:])}
-            
-            FORMATO OUTPUT RICHIESTO (Solo JSON Array puro, nient'altro):
-            ["Frase 1...", "Frase 2...", "Frase 3 (Citazione)...", ...]
+            OUTPUT: Devi rispondere ESCLUSIVAMENTE con un array JSON di stringhe.
+            Esempio: ["Frase 1", "Frase 2", "Frase 3 (Citazione)"]
             """
 
             response = model.generate_content(prompt)
             
-            # Pulizia e Parsing del JSON
-            text_resp = response.text.strip()
-            # A volte Gemini mette ```json all'inizio, lo togliamo
-            if "```" in text_resp:
-                text_resp = text_resp.replace("```json", "").replace("```", "")
+            # Parsing JSON (Ora è sicuro grazie al mime_type)
+            lista_frasi = json.loads(response.text)
             
-            lista_frasi = json.loads(text_resp)
-            
-            # --- SALVATAGGIO ---
             count = 0
-            for i, frase in enumerate(lista_frasi):
-                # Controllo Duplicati Python-Side (Sicurezza extra)
+            for frase in lista_frasi:
                 if frase in frasi_usate_recenti:
-                    continue # Salta se esiste già
+                    continue 
                 
-                # Se è Buongiorno, assegniamo una data specifica
                 data_str = ""
                 if m == "Buongiorno":
-                    data_target = oggi + timedelta(days=count) # Usa count invece di i per non saltare giorni se ci sono duplicati
+                    data_target = oggi + timedelta(days=count)
                     data_str = data_target.strftime("%Y-%m-%d")
                 
                 sheet.append_row([m, "Frase", frase, data_str])
                 count += 1
             
-            report.append(f"✅ {m}: Generate {count} nuove frasi (incluse citazioni).")
-            
-            # Pausa di sicurezza per il Rate Limit
-            time.sleep(15)
+            report.append(f"✅ {m}: Generate {count} nuove frasi.")
+            time.sleep(10) # Pausa anti-blocco
             
         except Exception as e:
-            report.append(f"❌ Errore generazione {m}: {e}")
-            time.sleep(15)
+            report.append(f"❌ Errore {m}: {e}")
+            time.sleep(10)
 
     return report
 
