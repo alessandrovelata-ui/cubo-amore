@@ -5,7 +5,7 @@ import google.generativeai as genai
 from oauth2client.service_account import ServiceAccountCredentials
 import json
 import streamlit as st
-import time  # <--- IMPORTANTE: Ci serve per fare la pausa
+import time
 
 def run_agent():
     # SETUP CREDENZIALI
@@ -39,8 +39,8 @@ def run_agent():
             else:
                 esempi = ["Ti amo", "Sei unica"] 
             
-            # 1. USIAMO IL MODELLO 1.5 FLASH (È il più stabile per il piano gratuito)
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            # --- MODELLO SCELTO DALLA TUA LISTA ---
+            model = genai.GenerativeModel('gemini-2.5-flash')
             
             prompt = f"Scrivi una frase breve (max 15 parole) per la mia ragazza. Mood: {m}. Esempi: {esempi}"
             response = model.generate_content(prompt)
@@ -49,13 +49,15 @@ def run_agent():
             sheet.append_row([m, "Frase", nuova_frase, ""])
             report.append(f"✅ {m}: {nuova_frase}")
             
-            # 2. LA PAUSA CAFFÈ (Aspetta 5 secondi tra una richiesta e l'altra)
-            # Questo evita l'errore 429 "Quota exceeded"
-            time.sleep(5)
+            # --- PAUSA DI SICUREZZA ---
+            # Hai un limite di 5 richieste al minuto.
+            # Aspettiamo 15 secondi per stare tranquilli.
+            time.sleep(15)
             
         except Exception as e:
             report.append(f"❌ Errore {m}: {e}")
-            time.sleep(5) # Aspetta anche se c'è errore
+            # Aspettiamo anche in caso di errore per non intasare
+            time.sleep(15) 
             
     return report
 
