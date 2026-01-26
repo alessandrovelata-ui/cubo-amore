@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import gspread
-from google.oauth2.service_account import Credentials # <--- NUOVA LIBRERIA
+from google.oauth2.service_account import Credentials # <--- QUESTA È LA CHIAVE
 import requests
 import json
 import agente_ia
@@ -66,8 +66,8 @@ st.markdown(hide_st_style, unsafe_allow_html=True)
 def connect_db():
     # --- NUOVO SISTEMA DI AUTENTICAZIONE ---
     scope = [
-        "[https://www.googleapis.com/auth/spreadsheets](https://www.googleapis.com/auth/spreadsheets)",
-        "[https://www.googleapis.com/auth/drive](https://www.googleapis.com/auth/drive)"
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
     ]
     json_creds = json.loads(st.secrets["GOOGLE_SHEETS_JSON"])
     creds = Credentials.from_service_account_info(json_creds, scopes=scope)
@@ -79,7 +79,7 @@ def notifica_telegram(testo):
     try:
         token = st.secrets["TELEGRAM_TOKEN"]
         chat_id = st.secrets["TELEGRAM_CHAT_ID"]
-        url = f"[https://api.telegram.org/bot](https://api.telegram.org/bot){token}/sendMessage"
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
         requests.get(url, params={"chat_id": chat_id, "text": testo})
     except: pass
 
@@ -104,7 +104,7 @@ def check_telegram_override(df_contenuti):
         token = st.secrets["TELEGRAM_TOKEN"]
         admin_id = str(st.secrets["TELEGRAM_CHAT_ID"])
         
-        url = f"[https://api.telegram.org/bot](https://api.telegram.org/bot){token}/getUpdates"
+        url = f"https://api.telegram.org/bot{token}/getUpdates"
         resp = requests.get(url).json()
         
         if "result" in resp:
@@ -152,12 +152,12 @@ def get_contenuto(mood_target):
         return filtro.sample().iloc[0]['Link_Testo']
 
     except Exception as e:
+        # Se c'è un errore, mostriamo quale per capire
         return f"Amore infinito ❤️ ({str(e)})"
 
 # --- CALENDARIO EVENTI ---
 def check_special_event():
     now = datetime.now()
-    # now = datetime(2026, 3, 14, 10, 0, 0) # TEST: Decommenta per testare Mesiversario
     
     start_date = datetime(2022, 2, 14, 0, 0, 0)
     
