@@ -37,7 +37,7 @@ def analizza_e_salva_stats(client):
         conteggio = df[colonna_mood].value_counts().to_dict()
         
         oggi = datetime.now()
-        report_text = "\n📊 **Report Settimanale:**\n"
+        report_text = "\n📊 **Report Ultimi 7 Giorni:**\n"
         riga_excel = [oggi.strftime("%Y-%m-%d")]
         
         moods_order = ["Triste", "Felice", "Nostalgica", "Stressata"]
@@ -58,7 +58,7 @@ def analizza_e_salva_stats(client):
     except Exception as e:
         return f"\n⚠️ Errore statistiche: {e}"
 
-# --- MOTORE AGENTE ---
+# --- MOTORE AGENTE (VERSIONE MENSILE) ---
 def run_agent():
     try:
         # 1. SETUP
@@ -81,7 +81,7 @@ def run_agent():
         df = pd.DataFrame(sheet.get_all_records())
         frasi_usate_recenti = []
         if not df.empty and 'Link_Testo' in df.columns:
-            frasi_usate_recenti = df['Link_Testo'].tail(150).tolist()
+            frasi_usate_recenti = df['Link_Testo'].tail(200).tolist() # Aumentata memoria per il mese
 
         # 3. MODELLO
         generation_config = {
@@ -94,55 +94,68 @@ def run_agent():
         moods = ["Buongiorno", "Triste", "Felice", "Nostalgica", "Stressata"]
         oggi = datetime.now()
         totale_generate = 0
+        
+        # --- CICLO MENSILE (4 SETTIMANE) ---
+        SETTIMANE = 4
+        invia_notifica_telegram(f"🚀 Avvio generazione mensile ({SETTIMANE} settimane). Porta pazienza...")
 
-        for m in moods:
-            try:
-                # Prompt ottimizzato con virgolette singole per sicurezza JSON
-                prompt = f"""
-                Sei un fidanzato innamorato. Genera un array JSON di 7 frasi per il mood: {m}.
-                
-                REGOLE TASSATIVE:
-                1. Genera 5 frasi originali e dolci.
-                2. Genera 2 CITAZIONI (Film, Libri, Canzoni).
-                3. IMPORTANTE: Usa SOLO l'apice singolo (') nel testo. NON usare virgolette doppie (").
-                4. Evita queste frasi: {str(frasi_usate_recenti[-15:])}
-                
-                OUTPUT: Solo JSON Array di stringhe. Esempio: ["Frase 1", "Frase 2"]
-                """
+        for settimana in range(SETTIMANE):
+            offset_giorni_settimana = settimana * 7
+            report_log.append(f"\n🗓️ **Settimana {settimana + 1}:**")
+            
+            for m in moods:
+                try:
+                    # Prompt Mensile
+                    prompt = f"""
+                    Sei un fidanzato innamorato. Genera un array JSON di 7 frasi uniche per il mood: {m}.
+                    
+                    REGOLE TASSATIVE:
+                    1. 5 frasi tue (dolci, originali) + 2 CITAZIONI (Film, Libri).
+                    2. IMPORTANTE: Usa SOLO l'apice singolo (') nel testo. NO virgolette doppie (").
+                    3. Varia il tono rispetto a queste frasi recenti: {str(frasi_usate_recenti[-20:])}
+                    
+                    OUTPUT: Solo JSON Array. Esempio: ['Frase 1', 'Frase 2']
+                    """
 
-                response = model.generate_content(prompt)
-                
-                text_clean = response.text.strip()
-                if "```json" in text_clean:
-                    text_clean = text_clean.replace("```json", "").replace("```", "")
-                
-                lista_frasi = json.loads(text_clean)
-                
-                local_count = 0
-                for frase in lista_frasi:
-                    if frase in frasi_usate_recenti: continue 
+                    response = model.generate_content(prompt)
                     
-                    data_str = ""
-                    if m == "Buongiorno":
-                        data_target = oggi + timedelta(days=local_count)
-                        data_str = data_target.strftime("%Y-%m-%d")
+                    # Pulizia JSON
+                    text_clean = response.text.strip()
+                    if "```json" in text_clean:
+                        text_clean = text_clean.replace("```json", "").replace("```", "")
                     
-                    sheet.append_row([m, "Frase", frase, data_str])
-                    local_count += 1
-                
-                totale_generate += local_count
-                report_log.append(f"✅ {m}: +{local_count}")
-                time.sleep(5) 
-                
-            except Exception as e:
-                err = f"❌ Errore {m}: {e}"
-                report_log.append(err)
-                time.sleep(5)
+                    lista_frasi = json.loads(text_clean)
+                    
+                    local_count = 0
+                    for i, frase in enumerate(lista_frasi):
+                        if frase in frasi_usate_recenti: continue 
+                        
+                        data_str = ""
+                        # Se è Buongiorno, calcoliamo la data esatta progressiva
+                        if m == "Buongiorno":
+                            # Data = Oggi + Offset Settimana + Indice Giorno (0-6)
+                            giorni_da_aggiungere = offset_giorni_settimana + local_count
+                            data_target = oggi + timedelta(days=giorni_da_aggiungere)
+                            data_str = data_target.strftime("%Y-%m-%d")
+                        
+                        sheet.append_row([m, "Frase", frase, data_str])
+                        frasi_usate_recenti.append(frase) # Aggiorna memoria live
+                        local_count += 1
+                    
+                    totale_generate += local_count
+                    report_log.append(f"   - {m}: +{local_count}")
+                    time.sleep(3) # Pausa tra i mood
+                    
+                except Exception as e:
+                    report_log.append(f"   ❌ Errore {m}: {e}")
+                    time.sleep(5)
+            
+            # Pausa extra tra le settimane per non saturare le API
+            time.sleep(5)
 
         stats_text = analizza_e_salva_stats(client)
         
-        messaggio_finale = f"✅ **AGENTE COMPLETATO**\nFrasi create: {totale_generate}\n"
-        messaggio_finale += "\n".join(report_log)
+        messaggio_finale = f"✅ **GENERAZIONE MENSILE COMPLETATA**\nFrasi totali create: {totale_generate}\n"
         messaggio_finale += f"\n{stats_text}"
         
         invia_notifica_telegram(messaggio_finale)
@@ -152,3 +165,6 @@ def run_agent():
         err_msg = f"❌ ERRORE CRITICO: {str(e_critico)}"
         invia_notifica_telegram(err_msg)
         return [err_msg]
+
+if __name__ == "__main__":
+    print(run_agent())
