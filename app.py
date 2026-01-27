@@ -118,11 +118,18 @@ def salva_log_mood(mood):
 def invia_notifica(text):
     """Manda il messaggio a Telegram"""
     try:
+        # Recupera le chiavi dai Secrets (assicurati che siano impostate su Streamlit Cloud!)
         tk = st.secrets.get("TELEGRAM_TOKEN")
         cid = st.secrets.get("TELEGRAM_CHAT_ID")
+        
+        # Fallback: Se non sono nei secrets, prova a usare quelli hardcoded (solo per test, meglio secrets)
+        if not tk: tk = "8583117209:AAHJkbze27JpY-ubsusIIruUg_qiGCZuqyE"
+        if not cid: cid = "1627105623"
+
         if tk and cid: 
             requests.get(f"https://api.telegram.org/bot{tk}/sendMessage", params={"chat_id": cid, "text": text})
-    except: pass
+    except Exception as e:
+        print(f"Errore notifica: {e}")
 
 def get_stato_luce():
     try:
@@ -224,15 +231,18 @@ if mode == "mood":
 
 # 2. HOME / LAMPADA
 else:
+    # Inizializzazione stati
     if 'reading_lamp' not in st.session_state:
         st.session_state['reading_lamp'] = False
         st.session_state['luce_on'] = (get_stato_luce() == 'ON')
     
+    # Se la luce è accesa (o era accesa prima del timer)
     if st.session_state['luce_on']:
         st.markdown("<h1>Ti sto pensando... ❤️</h1>", unsafe_allow_html=True)
         st.markdown("<p>Si è accesa una luce per te.</p>", unsafe_allow_html=True)
         st.write("")
         
+        # Fase 1: Bottone da premere
         if not st.session_state['reading_lamp']:
             c_spacer, c_main, c_spacer2 = st.columns([1, 4, 1])
             with c_main:
@@ -240,6 +250,8 @@ else:
                     st.session_state['testo_lampada'] = get_frase_da_emozioni("Pensiero", context_name="💡 LAMPADA")
                     st.session_state['reading_lamp'] = True
                     st.rerun()
+        
+        # Fase 2: Messaggio + Timer
         else:
             st.markdown(f"""
             <div class="message-box">
@@ -255,13 +267,18 @@ else:
                 time.sleep(1)
                 prog_bar.progress((i + 1) / 300)
             
-            # --- AZIONE FINALE TIMER ---
+            # --- FINE TIMER ---
+            # 1. Spegniamo su Excel
             set_luce_off()
-            invia_notifica("🌑 NOTIFICA: Il timer di 5 minuti è scaduto, la lampada si è spenta.") # <--- ECCOLO!
+            # 2. Notifichiamo Telegram
+            invia_notifica("🌑 NOTIFICA: Timer scaduto. Lampada spenta.")
+            # 3. Aggiorniamo lo stato locale
             st.session_state['luce_on'] = False
             st.session_state['reading_lamp'] = False
+            # 4. Ricarichiamo la pagina (che ora vedrà luce_on = False)
             st.rerun()
 
+    # SCENARIO B: BUONGIORNO (Se luce spenta)
     else:
         st.markdown("<h1>Buongiorno Amore! ☀️</h1>", unsafe_allow_html=True)
         st.markdown(f"<p>{datetime.now().strftime('%d %B %Y')}</p>", unsafe_allow_html=True)
