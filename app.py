@@ -11,7 +11,7 @@ import random
 # --- CONFIGURAZIONE ---
 st.set_page_config(page_title="Cubo Amore", page_icon="❤️", layout="centered")
 
-# --- CSS ---
+# --- CSS STYLES ---
 hide_st_style = """
             <style>
             .stApp { background-color: #FFF5F7; }
@@ -20,17 +20,21 @@ hide_st_style = """
             header {visibility: hidden;}
             [data-testid="stToolbar"] {visibility: hidden;}
             .stDeployButton {display:none;}
+            
             h1 { color: #D64161 !important; text-align: center; font-family: 'Helvetica Neue', sans-serif; font-weight: 700; text-shadow: 1px 1px 2px rgba(0,0,0,0.1); margin-bottom: 20px; }
-            h2, h3, p, div { color: #4A4A4A !important; text-align: center; }
+            h2 { font-style: italic !important; font-family: 'Georgia', serif; color: #D64161 !important; margin-bottom: 0px;}
+            h3, p, div { color: #4A4A4A !important; text-align: center; }
+            
             .counter-box { background-color: #fff; border: 2px solid #D64161; border-radius: 15px; padding: 15px; margin-top: 10px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
             .counter-big { font-size: 1.2em; font-weight: bold; color: #D64161 !important; }
-            .stButton>button { width: 100%; height: 3.5em; font-size: 20px !important; font-weight: 600; background-color: #ffffff; color: #D64161; border: 2px solid #FFD1DC; border-radius: 25px; box-shadow: 0 4px 6px rgba(214, 65, 97, 0.1); transition: all 0.3s ease; }
+            
+            .stButton>button { width: 100%; height: 3.5em; font-size: 18px !important; font-weight: 600; background-color: #ffffff; color: #D64161; border: 2px solid #FFD1DC; border-radius: 25px; box-shadow: 0 4px 6px rgba(214, 65, 97, 0.1); transition: all 0.3s ease; }
             .stButton>button:hover { border-color: #D64161; background-color: #FFF0F5; transform: translateY(-2px); }
             </style>
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
 
-# --- DB ---
+# --- DB CONNECTION ---
 def connect_db():
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     json_creds = json.loads(st.secrets["GOOGLE_SHEETS_JSON"])
@@ -53,21 +57,21 @@ def salva_log(mood):
         ws.append_row([datetime.now().strftime("%Y-%m-%d"), datetime.now().strftime("%H:%M"), mood])
     except: pass
 
-def segna_messaggio_letto(sh, riga_index):
+# --- GESTIONE LETTURA MESSAGGI ---
+def segna_messaggio_letto(sh, riga_index, foglio="Calendario"):
     try:
-        ws = sh.worksheet("Calendario") # Nota: Ora è nel calendario
-        # Nel calendario la colonna Mood è la 2 (Data, Mood, Frase...)
-        # Cambiamo "Manuale" in "Manuale_Letto"
-        ws.update_cell(riga_index, 2, "Manuale_Letto")
-    except Exception as e:
-        print(f"Err update: {e}")
+        ws = sh.worksheet(foglio)
+        # Se è Calendario, Mood è colonna 2. Se Emozioni (manuale lampada), potrebbe variare.
+        col = 2 if foglio == "Calendario" else 1 
+        ws.update_cell(riga_index, col, "Manuale_Letto")
+    except: pass
 
-# --- OVERRIDE TELEGRAM ---
+# --- CONTROLLO TELEGRAM & LAMPADA ---
 def check_telegram_override(df_cal):
     try:
         oggi_str = datetime.now().strftime("%Y-%m-%d")
+        # Se c'è già un messaggio attivo nel DB, non facciamo nulla
         if not df_cal.empty and 'Data' in df_cal.columns:
-             # Cerca nel Calendario
              check = df_cal[(df_cal['Mood'].str.contains('Manuale')) & (df_cal['Data'].astype(str) == oggi_str)]
              if not check.empty: return 
         
@@ -85,48 +89,73 @@ def check_telegram_override(df_cal):
                     timestamp = msg["date"]
                     testo = msg.get("text", "")
                     data_msg = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d")
+                    
                     if sender_id == admin_id and data_msg == oggi_str and not testo.startswith("/"):
                         sh = connect_db()
-                        ws = sh.worksheet("Calendario") # Scrive nel Calendario
-                        # [Data, Mood, Frase, Tipo, Marker]
-                        ws.append_row([oggi_str, "Manuale", testo, "TelegramOverride", ""])
+                        
+                        # LOGICA LAMPADA: Se il messaggio è il comando luce
+                        if testo == "CMD_LIGHT_ON":
+                             # Salva nel Calendario con Mood "Lampada"
+                             # La frase non sarà CMD_LIGHT_ON, ma verrà pescata dopo.
+                             ws = sh.worksheet("Calendario")
+                             ws.append_row([oggi_str, "Lampada_Attiva", "Trigger", "TelegramOverride", ""])
+                        else:
+                             # Messaggio manuale normale
+                             ws = sh.worksheet("Calendario")
+                             ws.append_row([oggi_str, "Manuale", testo, "TelegramOverride", ""])
+                        
                         st.rerun() 
                         return
     except: pass
 
-# --- RECUPERO CONTENUTI (NUOVA LOGICA) ---
+# --- RECUPERO CONTENUTI ---
 def get_contenuto(mood_target):
     try:
         sh = connect_db()
         oggi = datetime.now().strftime("%Y-%m-%d")
 
-        # CASO 1: BUONGIORNO (Legge da CALENDARIO)
         if mood_target == "Buongiorno":
-            ws = sh.worksheet("Calendario")
-            df = pd.DataFrame(ws.get_all_records())
+            ws_cal = sh.worksheet("Calendario")
+            df = pd.DataFrame(ws_cal.get_all_records())
             
-            # Check Override
+            # 1. Controlla Telegram (e Lampada)
             check_telegram_override(df)
-            df = pd.DataFrame(ws.get_all_records()) # Reload
+            df = pd.DataFrame(ws_cal.get_all_records()) # Ricarica
             
-            # Cerca Manuale
-            indices = df.index[(df['Mood'] == 'Manuale') & (df['Data'] == oggi)].tolist()
-            if indices:
-                idx = indices[-1]
+            # 2. Cerca Messaggio LAMPADA ATTIVA
+            lampada = df.index[(df['Mood'] == 'Lampada_Attiva') & (df['Data'] == oggi)].tolist()
+            if lampada:
+                # La lampada è accesa! Pesca una frase dolce dal foglio Emozioni
+                idx = lampada[-1]
+                segna_messaggio_letto(sh, idx + 2, "Calendario") # Consuma l'evento
+                
+                # Pesca frase "Pensiero"
+                ws_emo = sh.worksheet("Emozioni")
+                df_emo = pd.DataFrame(ws_emo.get_all_records())
+                pensieri = df_emo[df_emo['Mood'] == 'Pensiero']
+                
+                if not pensieri.empty:
+                    frase_dolce = pensieri.sample().iloc[0]['Frase']
+                    return f"💡 {frase_dolce}"
+                return "💡 Ti sto pensando..."
+
+            # 3. Cerca Messaggio MANUALE (Testo scritto da te)
+            manuale = df.index[(df['Mood'] == 'Manuale') & (df['Data'] == oggi)].tolist()
+            if manuale:
+                idx = manuale[-1]
                 messaggio = df.iloc[idx]['Frase']
-                segna_messaggio_letto(sh, idx + 2)
+                segna_messaggio_letto(sh, idx + 2, "Calendario")
                 return messaggio
             
-            # Cerca Buongiorno Automatico
+            # 4. Buongiorno Automatico
             daily = df[(df['Mood'] == 'Buongiorno') & (df['Data'] == oggi)]
             if not daily.empty: return daily.iloc[-1]['Frase']
             return "Ti amo ❤️ (Calendario in aggiornamento)"
 
-        # CASO 2: EMOZIONI (Legge da EMOZIONI)
         else:
+            # Mood Random (Luna)
             ws = sh.worksheet("Emozioni")
             df = pd.DataFrame(ws.get_all_records())
-            
             filtro = df[df['Mood'] == mood_target]
             if filtro.empty: return "Ti amo ❤️"
             return filtro.sample().iloc[0]['Frase']
@@ -134,41 +163,23 @@ def get_contenuto(mood_target):
     except Exception as e:
         return f"Amore infinito ❤️ ({str(e)})"
 
-# --- CALENDARIO EVENTI ---
+# --- EVENTI SPECIALI ---
 def check_special_event():
     now = datetime.now()
-    start_date = datetime(2022, 2, 14, 0, 0, 0)
+    start_date = datetime(2022, 2, 14, 0, 0, 0) # Esempio
     delta = now - start_date
-    giorni_totali = delta.days
-    ore_totali = int(delta.total_seconds() // 3600)
+    giorni = delta.days
+    ore = int(delta.total_seconds() // 3600)
     
     anni = now.year - start_date.year
     if (now.month, now.day) < (start_date.month, start_date.day): anni -= 1
     
-    mesi_diff = (now.year - start_date.year) * 12 + now.month - start_date.month
-    if now.day < start_date.day: mesi_diff -= 1
-    mesi_reali = mesi_diff % 12
-    
+    # Eventi Fissi
     if now.month == 2 and now.day == 14:
-        citazione = "\n\n\"Tu sei ogni ragione, ogni speranza e ogni sogno che abbia mai avuto.\" – Le pagine della nostra vita"
-        msg = f"Buon Anniversario! ❤️\n{anni} anni di Noi.{citazione}"
-        counter = f"Esattamente: {giorni_totali} giorni e {ore_totali} ore insieme!"
-        return "🎉 Anniversario", msg, counter
-        
+        return "🎉 Anniversario", f"Buon Anniversario! {anni} anni di Noi.", f"{giorni} giorni insieme"
     if now.day == 14:
-        msg = f"Buon Mesiversario! 🌹\n{anni} Anni e {mesi_reali} Mesi."
-        counter = f"Il contatore segna: {giorni_totali} giorni totali."
-        return "🌹 Mesiversario", msg, counter
-
-    if now.month == 4 and now.day == 12:
-        return "🎂 Buon Compleanno!", "Tanti auguri al mio Sole! Sei il regalo più bello.", None
-    if now.month == 6 and now.day in [20, 21]:
-        return "☀️ Solstizio d'Estate", "Il giorno più lungo per l'amore più grande.", None
-    if now.month == 12 and now.day in [21, 22]:
-        return "❄️ Solstizio d'Inverno", "La notte più lunga, illuminata da te.", None
-    if now.month == 12 and now.day == 25: return "🎄 Buon Natale", "Il mio regalo sei tu.", None
-    if now.month == 1 and now.day == 1: return "🥂 Buon Anno", "Scriviamo un altro capitolo.", None
-        
+        return "🌹 Mesiversario", f"Buon Mesiversario! {anni} Anni e {(now.month - 2)%12} Mesi.", f"{giorni} giorni"
+    
     return None, None, None
 
 # --- UI ---
@@ -179,47 +190,74 @@ if mode == "admin":
     st.markdown("### 🛠️ Centro di Controllo")
     pwd = st.text_input("Password", type="password")
     if pwd == "1234":
-        if st.button("🚀 AGGIORNA FOGLI (4 Settimane)"):
-            with st.spinner("Genero Calendario e Emozioni separati..."):
+        if st.button("🚀 AGGIORNA FOGLI (Include Pensieri)"):
+            with st.spinner("Genero Calendario e nuovi Pensieri..."):
                 report = agente_ia.run_agent()
                 st.write(report)
                 st.success("Fatto!")
+        
+        st.divider()
+        st.write("### 💡 Controllo Lampada")
+        if st.button("❤️ Accendi Lampada + Messaggio"):
+            # Manda il comando su Telegram. L'App lo intercetterà e mostrerà la frase "Pensiero"
+            agente_ia.invia_notifica_telegram("CMD_LIGHT_ON")
+            st.success("Lampada accesa e messaggio 'Pensiero' pronto!")
 
 elif mode == "daily":
     st.title("☀️")
+    
+    # 1. Eventi Speciali (Hanno priorità e si vedono subito)
     titolo_speciale, msg_speciale, counter_info = check_special_event()
     
     if titolo_speciale:
         st.markdown(f"<h1>{titolo_speciale}</h1>", unsafe_allow_html=True)
         st.markdown(f"<h3>{msg_speciale}</h3>", unsafe_allow_html=True)
         if counter_info:
-            st.markdown(f"""<div class="counter-box"><p class="counter-big">⏳ Il nostro tempo</p><p>{counter_info}</p></div>""", unsafe_allow_html=True)
+             st.markdown(f"""<div class="counter-box"><p class="counter-big">⏳ {counter_info}</p></div>""", unsafe_allow_html=True)
         st.balloons()
+    
     else:
-        st.markdown("## Buongiorno Amore")
+        # 2. Buongiorno Classico con Bottone Rivelatore
+        st.markdown("## *Buongiorno Amore!*")
         st.divider()
-        frase = get_contenuto('Buongiorno')
-        st.markdown(f"<h3 style='text-align: center; color: #444;'>{frase}</h3>", unsafe_allow_html=True)
+        
+        oggi_ita = datetime.now().strftime("%d/%m/%Y")
+        
+        # Gestione Sessione per il bottone
+        if "revealed" not in st.session_state:
+            st.session_state.revealed = False
+            
+        # Contenitore Vuoto per l'effetto apparizione
+        contenitore_frase = st.empty()
+        
+        if not st.session_state.revealed:
+            if st.button(f"💌 Scopri la frase di oggi - {oggi_ita}"):
+                st.session_state.revealed = True
+                notifica_telegram("👀 LEI HA APERTO IL BUONGIORNO!")
+                st.rerun() # Ricarica per mostrare il contenuto
+        
+        if st.session_state.revealed:
+            # Qui pesca il contenuto (Frase del giorno OPPURE Messaggio Lampada/Manuale)
+            frase = get_contenuto('Buongiorno')
+            st.markdown(f"<h3 style='text-align: center; color: #444; padding: 20px;'>{frase}</h3>", unsafe_allow_html=True)
 
 elif mode == "mood":
     st.title("Come ti senti?")
     st.write("") 
     c1, c2 = st.columns(2)
     c3, c4 = st.columns(2)
-    if c1.button("😔 Triste"):
-        salva_log("Triste")
-        notifica_telegram("⚠️ LEI È TRISTE")
-        st.info(get_contenuto("Triste"))
-    if c2.button("🥰 Felice"):
+    
+    # Funzione helper per evitare ripetizioni
+    def handle_click(mood, emoji, msg_tg):
+        salva_log(mood)
+        notifica_telegram(msg_tg)
+        st.info(f"{emoji} {get_contenuto(mood)}")
+
+    if c1.button("😔 Triste"): handle_click("Triste", "", "⚠️ LEI È TRISTE")
+    if c2.button("🥰 Felice"): 
         salva_log("Felice")
         notifica_telegram("ℹ️ Lei è felice!")
         st.success(get_contenuto("Felice"))
         st.snow()
-    if c3.button("🕰️ Nostalgica"):
-        salva_log("Nostalgica")
-        notifica_telegram("ℹ️ Lei è nostalgica")
-        st.warning(get_contenuto("Nostalgica"))
-    if c4.button("🤯 Stressata"):
-        salva_log("Stressata")
-        notifica_telegram("⚠️ Lei è STRESSATA")
-        st.error(get_contenuto("Stressata"))
+    if c3.button("🕰️ Nostalgica"): handle_click("Nostalgica", "", "ℹ️ Lei è nostalgica")
+    if c4.button("🤯 Stressata"): handle_click("Stressata", "", "⚠️ Lei è STRESSATA")
