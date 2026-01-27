@@ -11,264 +11,210 @@ from datetime import datetime
 # --- CONFIGURAZIONE ---
 SCOPE = ['https://www.googleapis.com/auth/spreadsheets', "https://www.googleapis.com/auth/drive"]
 SHEET_NAME = 'CuboAmoreDB'
-WORKSHEET_NAME = 'Emozioni' # Dove ci sono le frasi (Mood | Frase | Tipo | Marker)
-WORKSHEET_LOG = 'Log_Mood'  # Dove salviamo lo storico
 
-# --- FUNZIONI DI CONNESSIONE ---
+# Nomi dei fogli nel tuo Google Sheet
+WS_CALENDARIO = 'Calendario' # Colonne: Data | Mood | Frase | Tipo | Marker
+WS_EMOZIONI = 'Emozioni'     # Colonne: Mood | Frase | Tipo | Marker
+WS_CONFIG = 'Config'         # Cella B1 per ON/OFF
+
+# --- CONNESSIONE ---
 @st.cache_resource
 def get_connection():
     if "GOOGLE_SHEETS_JSON" in st.secrets:
-        try:
-            creds_dict = json.loads(st.secrets["GOOGLE_SHEETS_JSON"])
-            creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPE)
-        except Exception as e:
-            st.error(f"Errore Secrets: {e}")
-            st.stop()
+        creds_dict = json.loads(st.secrets["GOOGLE_SHEETS_JSON"])
+        creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPE)
     else:
-        try:
-            creds = Credentials.from_service_account_file('credentials.json', scopes=SCOPE)
-        except FileNotFoundError:
-            st.error("Nessuna credenziale trovata.")
-            st.stop()
+        creds = Credentials.from_service_account_file('credentials.json', scopes=SCOPE)
     client = gspread.authorize(creds)
     return client.open(SHEET_NAME)
 
-# --- NOTIFICHE TELEGRAM ---
+# --- FUNZIONI NOTIFICHE ---
 def invia_notifica(testo):
     try:
         token = st.secrets.get("TELEGRAM_TOKEN")
         chat_id = st.secrets.get("TELEGRAM_CHAT_ID")
         if token and chat_id:
-            url = f"https://api.telegram.org/bot{token}/sendMessage"
-            requests.get(url, params={"chat_id": chat_id, "text": testo})
+            requests.get(f"https://api.telegram.org/bot{token}/sendMessage", params={"chat_id": chat_id, "text": testo})
     except: pass
 
-# --- FUNZIONI LOGICHE ---
-
+# --- GESTIONE LUCE ---
 def get_stato_luce():
     try:
         sh = get_connection()
-        return sh.worksheet("Config").acell('B1').value or 'OFF'
+        return sh.worksheet(WS_CONFIG).acell('B1').value or 'OFF'
     except: return 'OFF'
 
 def set_luce_off():
     try:
         sh = get_connection()
-        sh.worksheet("Config").update_acell('B1', 'OFF')
+        sh.worksheet(WS_CONFIG).update_acell('B1', 'OFF')
     except: pass
 
-def salva_log_buongiorno(mood):
-    """Logga l'umore del Buongiorno e notifica"""
-    try:
-        sh = get_connection()
-        try: ws = sh.worksheet(WORKSHEET_LOG)
-        except: ws = sh.add_worksheet(title=WORKSHEET_LOG, rows=1000, cols=3)
-        
-        now = datetime.now()
-        ws.append_row([now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"), mood])
-        invia_notifica(f"☀️ BUONGIORNO: Lei si sente {mood}")
-        return True
-    except: return False
+# --- RECUPERO FRASI (LOGICHE DISTINTE) ---
 
-def pesca_frase_lampada():
-    """Logica per la Lampada (Token 1 - Luce ON): Prende la frase NEXT"""
+def get_frase_calendario_oggi():
+    """
+    Logica BUONGIORNO (Luce Spenta):
+    Cerca nel foglio 'Calendario' la frase che ha la data di OGGI.
+    """
     sh = get_connection()
-    worksheet = sh.worksheet(WORKSHEET_NAME)
-    df = pd.DataFrame(worksheet.get_all_records())
-    df['Marker'] = df['Marker'].astype(str)
+    ws = sh.worksheet(WS_CALENDARIO)
+    df = pd.DataFrame(ws.get_all_records())
+    
+    # Assicuriamoci che la colonna Data sia stringa o data gestibile
+    oggi = datetime.now().strftime("%Y-%m-%d")
+    
+    # Cerca la riga con la data di oggi
+    # Nota: il formato nel foglio deve essere YYYY-MM-DD
+    row = df[df['Data'].astype(str) == oggi]
+    
+    if row.empty:
+        return None, "Nessuna frase programmata per oggi sul calendario!"
+    
+    frase = row.iloc[0]['Frase']
+    mood = row.iloc[0]['Mood']
+    return mood, frase
 
-    # Cerca NEXT
-    target = df[df['Marker'] == 'NEXT']
-    
-    # Se non c'è, prendi una AVAILABLE a caso
-    if target.empty:
-        avail = df[df['Marker'] == 'AVAILABLE']
-        if avail.empty: return "Nessuna frase pronta ❤️"
-        idx = avail.index[0] # Prendi la prima disponibile
-        target = avail.iloc[[0]]
-        # Aggiorna subito a NEXT per coerenza, poi la useremo
-        worksheet.update_cell(idx + 2, df.columns.get_loc('Marker') + 1, 'NEXT')
-    
-    # Logica di consumo
-    idx_real = target.index[0]
-    frase = target.iloc[0]['Frase']
-    col_mark = df.columns.get_loc('Marker') + 1
-    
-    # 1. Segna come USATA
-    worksheet.update_cell(idx_real + 2, col_mark, 'USED')
-    
-    # 2. Prepara la prossima (NEXT) prendendo una AVAILABLE a caso
-    avail = df[df['Marker'] == 'AVAILABLE']
-    # Escludiamo quella appena usata se il dataframe non è aggiornato
-    avail = avail[avail.index != idx_real] 
-    
-    if not avail.empty:
-        idx_new = random.choice(avail.index)
-        worksheet.update_cell(idx_new + 2, col_mark, 'NEXT')
-        
-    return frase
+def get_frase_ti_penso():
+    """
+    Logica LAMPADA ON (Ti penso):
+    Cerca nel foglio 'Emozioni' una frase con Mood = 'Pensiero'
+    che sia 'AVAILABLE'. La marca come 'USED'.
+    """
+    return get_frase_da_emozioni("Pensiero", "💡 LAMPADA")
 
-def pesca_frase_mood(mood_scelto):
-    """Logica per il Barattolo (Token 2): Pesca una frase di quel MOOD specifico"""
+def get_frase_da_emozioni(mood_target, fonte_notifica):
+    """
+    Logica GENERICA per pescare da 'Emozioni' usando AVAILABLE -> USED
+    Usata sia per la Lampada (Mood=Pensiero) sia per la pagina Emozioni (Mood=Triste, ecc)
+    """
     sh = get_connection()
-    worksheet = sh.worksheet(WORKSHEET_NAME)
-    df = pd.DataFrame(worksheet.get_all_records())
+    ws = sh.worksheet(WS_EMOZIONI)
+    df = pd.DataFrame(ws.get_all_records())
+    
+    # Filtra per Mood e Disponibilità
+    # Convertiamo in stringa per sicurezza
     df['Marker'] = df['Marker'].astype(str)
     
-    # Filtra per Mood E per Marker AVAILABLE
-    # Nota: Assumiamo che nel foglio la colonna Mood contenga parole chiave (Triste, Felice...)
     candidati = df[
-        (df['Mood'].str.contains(mood_scelto, case=False, na=False)) & 
+        (df['Mood'].astype(str).str.contains(mood_target, case=False)) & 
         (df['Marker'] == 'AVAILABLE')
     ]
     
     if candidati.empty:
-        return "Non ho bigliettini nuovi per questo umore, ma ti amo lo stesso ❤️"
+        return "Non ho nuove frasi per questo momento, ma ti amo ❤️"
     
-    # Ne pesca una a caso
+    # Pesca a caso
     idx_scelto = random.choice(candidati.index)
     frase = candidati.loc[idx_scelto, 'Frase']
     
-    # La marca come USED (così non esce due volte)
-    col_mark = df.columns.get_loc('Marker') + 1
-    worksheet.update_cell(idx_scelto + 2, col_mark, 'USED')
+    # Aggiorna a USED
+    riga_excel = idx_scelto + 2
+    col_marker = df.columns.get_loc('Marker') + 1
+    ws.update_cell(riga_excel, col_marker, 'USED')
     
-    invia_notifica(f"🎫 BARATTOLO: Lei ha aperto un biglietto '{mood_scelto}'")
+    invia_notifica(f"{fonte_notifica}: Lei ha letto un biglietto '{mood_target}': {frase}")
     return frase
 
 # --- INTERFACCIA ---
 st.set_page_config(page_title="Cubo Amore", page_icon="❤️", layout="centered")
+st.markdown("""<style>#MainMenu {visibility: hidden;} footer {visibility: hidden;} .stButton>button {width: 100%; border-radius: 12px; height: 3.5em; border: none;}</style>""", unsafe_allow_html=True)
 
-# CSS Pulito
-st.markdown("""
-<style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    .stButton>button {
-        width: 100%; border-radius: 12px; height: 3.5em; font-weight: bold; border: none;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# Recupera parametri URL (per capire quale Token è stato usato)
+# Gestione Parametri URL
 params = st.query_params
-mode = params.get("mode", "home") # Default è "home" (Token 1)
+mode = params.get("mode", "home") 
 
 # ==============================================================================
-# TOKEN 2: PAGINA MOOD (Barattolo Emozioni) -> Link NFC: ?mode=mood
+# PAGINA 2: EMOZIONI (Token 2 -> ?mode=mood)
 # ==============================================================================
 if mode == "mood":
     st.title("Come ti senti? 💭")
-    st.write("Scegli un'emozione e ti darò una frase dedicata.")
+    st.write("Scegli un'emozione per aprire un bigliettino.")
     
-    if 'frase_mood_svelata' not in st.session_state:
-        st.session_state['frase_mood_svelata'] = ""
+    if 'msg_mood' not in st.session_state: st.session_state['msg_mood'] = ""
 
-    # Griglia 2x2
     c1, c2 = st.columns(2)
-    
-    bg_color = "#f0f2f6"
-    messaggio = st.session_state['frase_mood_svelata']
-
     with c1:
         if st.button("😢 Triste"):
-            st.session_state['frase_mood_svelata'] = pesca_frase_mood("Triste")
+            st.session_state['msg_mood'] = get_frase_da_emozioni("Triste", "🎫 EMOZIONI")
             st.rerun()
         if st.button("🥰 Felice"):
-            st.session_state['frase_mood_svelata'] = pesca_frase_mood("Felice")
+            st.session_state['msg_mood'] = get_frase_da_emozioni("Felice", "🎫 EMOZIONI")
             st.rerun()
-            
     with c2:
         if st.button("😤 Stressata"):
-            st.session_state['frase_mood_svelata'] = pesca_frase_mood("Stressata")
+            st.session_state['msg_mood'] = get_frase_da_emozioni("Stressata", "🎫 EMOZIONI")
             st.rerun()
         if st.button("🍂 Nostalgica"):
-            st.session_state['frase_mood_svelata'] = pesca_frase_mood("Nostalgica")
+            st.session_state['msg_mood'] = get_frase_da_emozioni("Nostalgica", "🎫 EMOZIONI")
             st.rerun()
 
-    if messaggio:
-        st.markdown("---")
-        st.markdown(f"""
-        <div style='background-color: #e3f2fd; padding: 20px; border-radius: 10px; border: 2px solid #2196f3; text-align: center;'>
-            <h3 style='color: #0d47a1;'>{messaggio}</h3>
-        </div>
-        """, unsafe_allow_html=True)
+    if st.session_state['msg_mood']:
+        st.success(f"✨ {st.session_state['msg_mood']}")
         if st.button("Chiudi"):
-            st.session_state['frase_mood_svelata'] = ""
+            st.session_state['msg_mood'] = ""
             st.rerun()
-
 
 # ==============================================================================
-# TOKEN 1: PAGINA PRINCIPALE (Lampada/Buongiorno) -> Link NFC: normale
+# PAGINA 1: HOME (Token 1 -> Link normale)
 # ==============================================================================
 else:
-    # Controlla stato luce
-    if 'luce_accesa' not in st.session_state: st.session_state['luce_accesa'] = False
-    if 'timer_attivo' not in st.session_state: 
-        st.session_state['luce_accesa'] = (get_stato_luce() == 'ON')
+    # Controlla se la luce è accesa
+    if 'luce_on' not in st.session_state: st.session_state['luce_on'] = False
+    
+    # Verifica stato solo se non siamo già in modalità lettura
+    if 'reading' not in st.session_state:
+        st.session_state['luce_on'] = (get_stato_luce() == 'ON')
+        st.session_state['reading'] = False
 
-    # SCENARIO A: LUCE ACCESA (SORPRESA)
-    if st.session_state['luce_accesa']:
-        st.markdown("<br><br>", unsafe_allow_html=True)
-        st.markdown("<h1 style='text-align: center; color: #ff4b4b;'>Ti sto pensando ❤️</h1>", unsafe_allow_html=True)
+    # ------------------------------------------------
+    # CASO A: LAMPADA ACCESA (Priority Override)
+    # ------------------------------------------------
+    if st.session_state['luce_on']:
+        st.markdown("<br><h1 style='text-align: center; color: #ff4b4b;'>Ti sto pensando ❤️</h1>", unsafe_allow_html=True)
+        st.markdown("---")
         
-        if 'frase_lampada' not in st.session_state:
-            st.session_state['frase_lampada'] = ""
-            
-        if not st.session_state['frase_lampada']:
+        if not st.session_state['reading']:
             col1, col2, col3 = st.columns([1, 2, 1])
             with col2:
-                st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("💌 Leggi messaggio", type="primary"):
-                    with st.spinner("..."):
-                        frase = pesca_frase_lampada()
-                        st.session_state['frase_lampada'] = frase
-                        invia_notifica(f"💡 LAMPADA: Lei ha letto: {frase}")
+                if st.button("💌 C'è un messaggio per te", type="primary"):
+                    st.session_state['testo_lampada'] = get_frase_ti_penso() # Prende frase "Pensiero"
+                    st.session_state['reading'] = True
                     st.rerun()
         else:
-            st.markdown(f"""
-            <div style='background-color: #fff0f5; padding: 30px; border-radius: 10px; border: 2px solid #ff4b4b; text-align: center;'>
-                <h2>✨ {st.session_state['frase_lampada']} ✨</h2>
-            </div>
-            """, unsafe_allow_html=True)
+            # Mostra frase + Timer
+            st.markdown(f"<div style='background:#fff0f5;padding:20px;border-radius:10px;text-align:center;'><h3>{st.session_state['testo_lampada']}</h3></div>", unsafe_allow_html=True)
+            st.info("Spegnimento in 5 minuti...")
             
-            st.info("🕒 Spegnimento automatico in 5 minuti...")
             bar = st.progress(0)
             for i in range(300):
                 time.sleep(1)
                 bar.progress((i + 1) / 300)
             
             set_luce_off()
-            st.session_state['luce_accesa'] = False
-            st.session_state['frase_lampada'] = ""
+            st.session_state['luce_on'] = False
+            st.session_state['reading'] = False
             st.rerun()
 
-    # SCENARIO B: LUCE SPENTA (BUONGIORNO)
+    # ------------------------------------------------
+    # CASO B: BUONGIORNO (Luce Spenta - Default)
+    # ------------------------------------------------
     else:
-        # Nascondiamo la pagina Ricordi come richiesto, mostriamo solo Buongiorno
-        # Se ti serve Admin aggiungilo in sidebar, ma per lei deve essere pulito
-        if st.sidebar.checkbox("Admin Mode"):
-            st.title("Admin")
-            st.write("Aggiungi frasi da qui o da Telegram")
+        st.title("Buongiorno Amore! ☀️")
+        st.write(f"Oggi è il {datetime.now().strftime('%d/%m/%Y')}")
+        
+        if 'frase_giorno' not in st.session_state:
+            st.session_state['frase_giorno'] = ""
+
+        # Logica Calendario
+        if not st.session_state['frase_giorno']:
+             if st.button("📅 Leggi la frase di oggi"):
+                mood_oggi, testo_oggi = get_frase_calendario_oggi()
+                st.session_state['frase_giorno'] = testo_oggi
+                invia_notifica(f"☀️ CALENDARIO: Lei ha letto il buongiorno: {testo_oggi}")
+                st.rerun()
         else:
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.title("Buongiorno Amore! ☀️")
-            st.write("Come ti senti adesso? Clicca per farmelo sapere.")
-            st.markdown("---")
+            st.success(f"✨ {st.session_state['frase_giorno']}")
             
-            c1, c2 = st.columns(2)
-            with c1:
-                if st.button("🥰 Felice"):
-                    salva_log_buongiorno("Felice")
-                    st.success("Che bello vederti felice!")
-                if st.button("😢 Triste"):
-                    salva_log_buongiorno("Triste")
-                    st.warning("Mi dispiace amore, ti chiamo presto.")
-            with c2:
-                if st.button("😴 Stanca"):
-                    salva_log_buongiorno("Stanca")
-                    st.info("Cerca di riposare un po'.")
-                if st.button("❤️ Innamorata"):
-                    salva_log_buongiorno("Innamorata")
-                    st.balloons()
-                    st.success("Ti amo tantissimo anche io!")
+        # Pulsante refresh nascosto per vedere se la luce si accende
+        if st.button("🔄"): st.rerun()
