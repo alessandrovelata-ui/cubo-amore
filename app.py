@@ -7,10 +7,12 @@ import random
 
 # --- CONFIGURAZIONE ---
 SCOPE = ['https://www.googleapis.com/auth/spreadsheets', "https://www.googleapis.com/auth/drive"]
-CREDS_FILE = 'credentials.json' # Il tuo file json delle chiavi
-SHEET_NAME = 'CuboAmoreDB' # Il nome del tuo file Google Sheet
+CREDS_FILE = 'credentials.json' 
+SHEET_NAME = 'CuboAmoreDB'
+WORKSHEET_NAME = 'Emozioni' # Il nome del foglio con le colonne Mood, Frase, Tipo, Marker
 
 # --- FUNZIONI DI CONNESSIONE ---
+@st.cache_resource
 def get_connection():
     creds = Credentials.from_service_account_file(CREDS_FILE, scopes=SCOPE)
     client = gspread.authorize(creds)
@@ -20,159 +22,208 @@ def get_connection():
 
 def get_stato_luce():
     """Legge se la luce è ON o OFF dal foglio Config"""
-    sh = get_connection()
-    # Ipotizziamo che lo stato della luce sia nel foglio 'Config', cella B1
-    worksheet = sh.worksheet("Config") 
-    return worksheet.acell('B1').value # Ritorna 'ON' o 'OFF'
+    try:
+        sh = get_connection()
+        worksheet = sh.worksheet("Config")
+        val = worksheet.acell('B1').value
+        return val if val else 'OFF'
+    except Exception as e:
+        return 'OFF'
 
 def set_luce_off():
-    """Spegne la luce sul foglio"""
+    """Spegne la luce sul foglio Config"""
+    try:
+        sh = get_connection()
+        worksheet = sh.worksheet("Config")
+        worksheet.update_acell('B1', 'OFF')
+    except Exception as e:
+        st.error(f"Errore spegnimento: {e}")
+
+def aggiungi_frase(mood, frase, tipo):
+    """Aggiunge una nuova riga: Mood, Frase, Tipo, Marker"""
     sh = get_connection()
-    worksheet = sh.worksheet("Config")
-    worksheet.update('B1', 'OFF') # Aggiorna la cella B1 a OFF
+    worksheet = sh.worksheet(WORKSHEET_NAME)
+    # Marker di default è AVAILABLE
+    worksheet.append_row([mood, frase, tipo, "AVAILABLE"])
 
 def gestisci_frasi_e_aggiorna_db():
     """
-    1. Trova la frase 'NEXT'.
-    2. La marca come 'USED'.
-    3. Trova una nuova frase 'AVAILABLE' e la marca come 'NEXT'.
-    4. Restituisce il testo della frase che era 'NEXT'.
+    Logica marker:
+    1. NEXT -> USED
+    2. AVAILABLE (random) -> NEXT
     """
     sh = get_connection()
-    worksheet = sh.worksheet("Frasi") # Assumi che il foglio si chiami 'Frasi'
+    worksheet = sh.worksheet(WORKSHEET_NAME)
     data = worksheet.get_all_records()
     df = pd.DataFrame(data)
 
-    # 1. Trova la frase 'NEXT' (quella da mostrare oggi)
-    frase_next_row = df[df['Stato'] == 'NEXT']
-    
-    if frase_next_row.empty:
-        return "Nessuna frase programmata per oggi!"
-    
-    indice_next = frase_next_row.index[0] # Indice nel DataFrame
-    testo_frase = frase_next_row.iloc[0]['Frase']
-    
-    # Calcolo la riga reale nel foglio (gspread parte da 1 + 1 header = riga 2)
-    riga_sheet_next = indice_next + 2 
+    # Convertiamo Marker in stringa per sicurezza
+    df['Marker'] = df['Marker'].astype(str)
 
-    # 2. Aggiorna la frase attuale da NEXT a USED
-    worksheet.update_cell(riga_sheet_next, df.columns.get_loc('Stato') + 1, 'USED')
+    # 1. Cerca la frase NEXT
+    frase_next_row = df[df['Marker'] == 'NEXT']
     
-    # 3. Prepara la frase per DOMANI (o la prossima volta)
-    # Cerca tutte le frasi ancora AVAILABLE
-    frasi_available = df[df['Stato'] == 'AVAILABLE']
+    # Fallback: se non c'è NEXT, prendi una AVAILABLE
+    if frase_next_row.empty:
+        frase_next_row = df[df['Marker'] == 'AVAILABLE']
+        if frase_next_row.empty:
+            return "Nessuna frase disponibile!"
+        
+        # Imposta subito questa come NEXT nel DB
+        idx_emerg = frase_next_row.index[0]
+        col_marker = df.columns.get_loc('Marker') + 1
+        worksheet.update_cell(idx_emerg + 2, col_marker, 'NEXT')
+        
+        # Ricarica
+        data = worksheet.get_all_records()
+        df = pd.DataFrame(data)
+        frase_next_row = df[df['Marker'] == 'NEXT']
+
+    # Recupera il testo
+    indice_next = frase_next_row.index[0]
+    testo_frase = frase_next_row.iloc[0]['Frase'] # Colonna 'Frase'
+    
+    # Calcola posizioni
+    riga_sheet = indice_next + 2 
+    col_marker = df.columns.get_loc('Marker') + 1
+
+    # 2. Aggiorna: NEXT -> USED
+    worksheet.update_cell(riga_sheet, col_marker, 'USED')
+    
+    # 3. Prepara la prossima: AVAILABLE -> NEXT
+    frasi_available = df[df['Marker'] == 'AVAILABLE']
     
     if not frasi_available.empty:
-        # Ne sceglie una a caso (o la prima della lista, come preferisci)
-        indice_nuova = random.choice(frasi_available.index)
-        riga_sheet_nuova = indice_nuova + 2
-        # Marca la nuova frase come NEXT
-        worksheet.update_cell(riga_sheet_nuova, df.columns.get_loc('Stato') + 1, 'NEXT')
-    else:
-        st.warning("Attenzione: Frasi finite! Aggiungine altre nel database.")
-
+        idx_nuova = random.choice(frasi_available.index)
+        worksheet.update_cell(idx_nuova + 2, col_marker, 'NEXT')
+    
     return testo_frase
 
 # --- INTERFACCIA UTENTE ---
 
-st.set_page_config(page_title="Cubo Amore", page_icon="❤️")
+st.set_page_config(page_title="Cubo Amore", page_icon="❤️", layout="centered")
 
-# 1. CONTROLLO STATO LUCE
-# Se non è in session state, lo leggiamo dal DB. 
-# Usiamo session state per evitare di rileggere il DB ad ogni micro-interazione, 
-# ma forziamo la rilettura se necessario.
+# CSS per pulizia visiva
+hide_st_style = """
+            <style>
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
+            </style>
+            """
+st.markdown(hide_st_style, unsafe_allow_html=True)
+
+# Inizializzazione Session State
 if 'luce_accesa' not in st.session_state:
-    stato_db = get_stato_luce()
-    st.session_state['luce_accesa'] = (stato_db == 'ON')
+    st.session_state['luce_accesa'] = False
 
-# Pulsante di debug per ricaricare lo stato (utile se accendi da Telegram mentre hai la pagina aperta)
-if st.sidebar.button("🔄 Aggiorna Stato"):
-    stato_db = get_stato_luce()
-    st.session_state['luce_accesa'] = (stato_db == 'ON')
-    st.rerun()
+# Controllo iniziale (solo se timer non attivo)
+if 'timer_attivo' not in st.session_state:
+    stato_reale = get_stato_luce()
+    st.session_state['luce_accesa'] = (stato_reale == 'ON')
 
-# --- SCENARIO A: LUCE ACCESA (Ti sto pensando) ---
+# ==========================================
+# SCENARIO A: LUCE ACCESA (Ti sto pensando)
+# ==========================================
 if st.session_state['luce_accesa']:
     
-    st.markdown("<h1 style='text-align: center; color: #ff4b4b;'>Ti sto pensando ❤️</h1>", unsafe_allow_html=True)
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; color: #E91E63; font-size: 50px;'>Ti sto pensando ❤️</h1>", unsafe_allow_html=True)
     st.markdown("---")
-    
-    # Variabile per tracciare se il pulsante è stato premuto
-    if 'frase_mostrata' not in st.session_state:
-        st.session_state['frase_mostrata'] = False
-        st.session_state['testo_da_leggere'] = ""
 
-    # Pulsante principale
-    if not st.session_state['frase_mostrata']:
-        col1, col2, col3 = st.columns([1,2,1])
+    if 'frase_svelata' not in st.session_state:
+        st.session_state['frase_svelata'] = False
+        st.session_state['testo_da_mostrare'] = ""
+
+    # PULSANTE
+    if not st.session_state['frase_svelata']:
+        col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            if st.button("C'è una frase per te 💌", use_container_width=True):
-                # Qui avviene la magia: aggiornamento DB e recupero frase
-                with st.spinner("Sto aprendo il bigliettino..."):
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("C'è una frase per te 💌", use_container_width=True, type="primary"):
+                with st.spinner("Apro il bigliettino..."):
                     frase = gestisci_frasi_e_aggiorna_db()
-                    st.session_state['testo_da_leggere'] = frase
-                    st.session_state['frase_mostrata'] = True
+                    st.session_state['testo_da_mostrare'] = frase
+                    st.session_state['frase_svelata'] = True
                 st.rerun()
 
-    # Mostra la frase e gestisci il timer
+    # VISUALIZZAZIONE + TIMER
     else:
-        st.markdown(f"<h2 style='text-align: center; padding: 20px;'>✨ {st.session_state['testo_da_leggere']} ✨</h2>", unsafe_allow_html=True)
+        st.markdown(f"""
+        <div style='background-color: #ffeef0; padding: 30px; border-radius: 10px; border: 2px solid #E91E63; text-align: center; margin-bottom: 20px;'>
+            <h2 style='color: #333; font-family: sans-serif;'>✨ {st.session_state['testo_da_mostrare']} ✨</h2>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.info("🕒 Timer attivo: la lampada si spegnerà tra 5 minuti.")
         
-        st.info("🕒 La lampada si spegnerà automaticamente tra 5 minuti.")
+        my_bar = st.progress(0)
         
-        # Barra di progresso o spinner per il timer
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
-        # Timer di 5 minuti (300 secondi)
-        total_time = 300 
-        for i in range(total_time):
-            # Aggiorna ogni secondo
+        # Loop 5 minuti (300 sec)
+        tempo_totale = 300 
+        for i in range(tempo_totale):
             time.sleep(1)
-            progresso = (i + 1) / total_time
-            progress_bar.progress(progresso)
-            remaining = total_time - i - 1
-            status_text.text(f"Spegnimento tra {remaining // 60}m {remaining % 60}s...")
-        
-        # Fine del timer
-        status_text.text("Spegnimento in corso...")
-        set_luce_off() # Aggiorna Google Sheet a OFF
-        st.session_state['luce_accesa'] = False # Aggiorna stato locale
-        st.session_state['frase_mostrata'] = False # Resetta per la prossima volta
+            my_bar.progress((i + 1) / tempo_totale)
+
+        set_luce_off()
+        st.session_state['luce_accesa'] = False
+        st.session_state['frase_svelata'] = False
         st.rerun()
 
-# --- SCENARIO B: LUCE SPENTA (Pagina Emozioni / Admin) ---
+# ==========================================
+# SCENARIO B: LUCE SPENTA (Menu)
+# ==========================================
 else:
-    # Sidebar per navigazione
-    page = st.sidebar.radio("Menu", ["Emozioni", "Admin"])
+    menu = st.sidebar.radio("Navigazione", ["Emozioni", "Admin"])
+    
+    if st.sidebar.button("🔄 Controlla Luce"):
+        st.rerun()
 
-    if page == "Emozioni":
+    # PAGINA EMOZIONI
+    if menu == "Emozioni":
         st.title("Le tue emozioni 💭")
         
-        # Carica dati per sola lettura
         try:
             sh = get_connection()
-            worksheet = sh.worksheet("Frasi")
+            worksheet = sh.worksheet(WORKSHEET_NAME)
             data = worksheet.get_all_records()
             df = pd.DataFrame(data)
-
-            # Mostra le frasi con i marker
+            
+            # Filtra e mostra
             for index, row in df.iterrows():
-                frase = row['Frase']
-                stato = row['Stato']
-                
-                if stato == 'USED':
-                    st.success(f"✅ {frase}") # Frase già letta
-                elif stato == 'NEXT':
-                    st.info(f"🔒 (Prossima frase in attesa)") # Non mostrare il testo della prossima!
-                else:
-                    st.write(f"⬜ {frase}") # Frase disponibile ma futura
+                try:
+                    marker = str(row['Marker'])
+                    frase = row['Frase']
+                    mood = row['Mood'] # Opzionale: mostra anche il mood se vuoi
+                    
+                    if marker == 'USED':
+                        st.success(f"✅ {frase}")
+                    elif marker == 'NEXT':
+                        st.info("🔒 (Sorpresa in arrivo...)")
+                    elif marker == 'AVAILABLE':
+                        st.write("⬜ (In attesa)")
+                except KeyError:
+                    st.error("Errore nelle colonne del file Excel.")
                     
         except Exception as e:
-            st.error(f"Errore caricamento dati: {e}")
+            st.error(f"Errore connessione: {e}")
 
-    elif page == "Admin":
-        st.title("Pannello di Controllo 🛠️")
-        st.write("Qui puoi aggiungere nuove frasi al foglio Google.")
-        # ... qui puoi mettere il tuo vecchio codice per aggiungere frasi ...
-        st.write(f"Stato Luce attuale: {'ACCESA' if st.session_state['luce_accesa'] else 'SPENTA'}")
+    # PAGINA ADMIN
+    elif menu == "Admin":
+        st.title("Aggiungi Frase 🛠️")
+        
+        with st.form("nuova_frase"):
+            colA, colB = st.columns(2)
+            with colA:
+                mood_input = st.selectbox("Mood", ["Amore", "Malinconia", "Gioia", "Passione"])
+            with colB:
+                tipo_input = st.selectbox("Tipo", ["Canzone", "Poesia", "Pensiero", "Citazione"])
+            
+            txt_frase = st.text_area("Frase:")
+            
+            if st.form_submit_button("Salva nel Cubo"):
+                if txt_frase:
+                    aggiungi_frase(mood_input, txt_frase, tipo_input)
+                    st.success("Salvata!")
+                    time.sleep(1)
+                    st.rerun()
