@@ -4,17 +4,36 @@ import gspread
 from google.oauth2.service_account import Credentials
 import time
 import random
+import json
 
 # --- CONFIGURAZIONE ---
 SCOPE = ['https://www.googleapis.com/auth/spreadsheets', "https://www.googleapis.com/auth/drive"]
-CREDS_FILE = 'credentials.json' 
 SHEET_NAME = 'CuboAmoreDB'
-WORKSHEET_NAME = 'Emozioni' # Il nome del foglio con le colonne Mood, Frase, Tipo, Marker
+WORKSHEET_NAME = 'Emozioni' # Il foglio con: Mood, Frase, Tipo, Marker
 
-# --- FUNZIONI DI CONNESSIONE ---
+# --- FUNZIONE DI CONNESSIONE (AGGIORNATA PER CLOUD) ---
 @st.cache_resource
 def get_connection():
-    creds = Credentials.from_service_account_file(CREDS_FILE, scopes=SCOPE)
+    # 1. Prova a leggere dai Secrets di Streamlit (Cloud)
+    if "GOOGLE_SHEETS_JSON" in st.secrets:
+        try:
+            # Legge la stringa JSON dai secrets
+            json_str = st.secrets["GOOGLE_SHEETS_JSON"]
+            # Converte la stringa in dizionario
+            creds_dict = json.loads(json_str)
+            creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPE)
+        except Exception as e:
+            st.error(f"Errore nella lettura dei Secrets: {e}")
+            st.stop()
+            
+    # 2. Se non siamo sul Cloud, cerca il file locale (utile per test sul PC)
+    else:
+        try:
+            creds = Credentials.from_service_account_file('credentials.json', scopes=SCOPE)
+        except FileNotFoundError:
+            st.error("File 'credentials.json' non trovato e nessun Secret impostato.")
+            st.stop()
+
     client = gspread.authorize(creds)
     return client.open(SHEET_NAME)
 
@@ -67,10 +86,11 @@ def gestisci_frasi_e_aggiorna_db():
     if frase_next_row.empty:
         frase_next_row = df[df['Marker'] == 'AVAILABLE']
         if frase_next_row.empty:
-            return "Nessuna frase disponibile!"
+            return "Nessuna frase disponibile! Dillo ad Alessandro ❤️"
         
         # Imposta subito questa come NEXT nel DB
         idx_emerg = frase_next_row.index[0]
+        # Calcolo colonna (1-based)
         col_marker = df.columns.get_loc('Marker') + 1
         worksheet.update_cell(idx_emerg + 2, col_marker, 'NEXT')
         
@@ -103,7 +123,7 @@ def gestisci_frasi_e_aggiorna_db():
 
 st.set_page_config(page_title="Cubo Amore", page_icon="❤️", layout="centered")
 
-# CSS per pulizia visiva
+# CSS per nascondere menu standard e footer
 hide_st_style = """
             <style>
             #MainMenu {visibility: hidden;}
@@ -182,6 +202,7 @@ else:
     # PAGINA EMOZIONI
     if menu == "Emozioni":
         st.title("Le tue emozioni 💭")
+        st.write("Le frasi che hai già collezionato:")
         
         try:
             sh = get_connection()
@@ -194,19 +215,18 @@ else:
                 try:
                     marker = str(row['Marker'])
                     frase = row['Frase']
-                    mood = row['Mood'] # Opzionale: mostra anche il mood se vuoi
                     
                     if marker == 'USED':
                         st.success(f"✅ {frase}")
                     elif marker == 'NEXT':
                         st.info("🔒 (Sorpresa in arrivo...)")
-                    elif marker == 'AVAILABLE':
-                        st.write("⬜ (In attesa)")
+                    # Non mostriamo le AVAILABLE per non rovinare la sorpresa
+                    
                 except KeyError:
                     st.error("Errore nelle colonne del file Excel.")
                     
         except Exception as e:
-            st.error(f"Errore connessione: {e}")
+            st.error(f"Errore caricamento dati: {e}")
 
     # PAGINA ADMIN
     elif menu == "Admin":
