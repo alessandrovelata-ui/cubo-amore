@@ -9,7 +9,7 @@ import requests
 from datetime import datetime
 
 # ==============================================================================
-# ⚙️ CONFIGURAZIONE
+# ⚙️ CONFIGURAZIONE (Link Unico)
 # ==============================================================================
 SCOPE = ['https://www.googleapis.com/auth/spreadsheets', "https://www.googleapis.com/auth/drive"]
 SHEET_NAME = 'CuboAmoreDB'
@@ -20,7 +20,7 @@ WS_CONFIG = 'Config'
 WS_LOG = 'Log_Mood' 
 
 # ==============================================================================
-# 🎨 STILE
+# 🎨 STILE CUTE AD ALTO CONTRASTO
 # ==============================================================================
 def set_style():
     st.markdown("""
@@ -32,66 +32,36 @@ def set_style():
             background-size: 20px 20px;
         }
         #MainMenu, footer, header {visibility: hidden;}
-        h1, h2, h3, p, div, span, label {
-            color: #880E4F !important;
-            text-align: center;
-        }
+        
         h1 {
+            color: #880E4F !important;
             font-family: 'Fredoka', sans-serif;
-            font-size: 40px !important;
-            margin-bottom: 10px;
-            text-shadow: none !important;
+            font-size: 42px !important;
+            text-align: center;
+            margin-bottom: 20px;
         }
-        div.stButton > button {
-            width: 100%;
-            height: 70px;
-            background: white;
-            color: #D81B60 !important;
-            font-family: 'Nunito', sans-serif;
-            font-size: 22px !important;
-            font-weight: 700 !important;
-            border-radius: 20px;
-            border: 2px solid #F48FB1;
-            box-shadow: 0 4px 6px rgba(216, 27, 96, 0.1);
-            transition: all 0.2s ease;
-            margin-bottom: 10px;
-        }
-        div.stButton > button:hover {
-            transform: scale(1.02);
-            border-color: #C2185B;
-        }
+        
         .message-box {
             background-color: #FFFFFF;
-            padding: 25px;
-            border-radius: 15px;
-            border: 3px dashed #F06292;
+            padding: 35px;
+            border-radius: 20px;
+            border: 4px dashed #F06292;
             text-align: center;
-            font-size: 22px;
+            font-size: 26px;
             font-weight: 700;
             color: #4A142F !important;
             font-family: 'Nunito', sans-serif;
-            line-height: 1.5;
-            box-shadow: 0 10px 20px rgba(194, 24, 91, 0.1);
-            margin-top: 20px;
-            margin-bottom: 20px;
+            line-height: 1.6;
+            box-shadow: 0 10px 30px rgba(194, 24, 91, 0.15);
+            margin: 20px 0;
         }
-        .message-icon {
-            font-size: 40px;
-            display: block;
-            margin-bottom: 10px;
-        }
-        .close-btn button {
-            height: 40px !important;
-            font-size: 16px !important;
-            border: 1px solid #ccc !important;
-            color: #555 !important;
-            background: #f9f9f9 !important;
-        }
+        
+        .icon { font-size: 50px; display: block; margin-bottom: 15px; }
     </style>
     """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 🔌 CONNESSIONI
+# 🔌 CONNESSIONI E NOTIFICHE
 # ==============================================================================
 
 @st.cache_resource
@@ -101,207 +71,115 @@ def get_connection():
         creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPE)
     else:
         creds = Credentials.from_service_account_file('credentials.json', scopes=SCOPE)
-    client = gspread.authorize(creds)
-    return client.open(SHEET_NAME)
-
-def salva_log_mood(mood):
-    try:
-        sh = get_connection()
-        try: ws = sh.worksheet(WS_LOG)
-        except: 
-            ws = sh.add_worksheet(title=WS_LOG, rows=1000, cols=3)
-            ws.append_row(["Data", "Orario", "Mood"])
-        now = datetime.now()
-        ws.append_row([now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"), mood])
-    except: pass
+    return gspread.authorize(creds).open(SHEET_NAME)
 
 def invia_notifica(text):
-    """Manda il messaggio a Telegram"""
     try:
-        # Recupera le chiavi dai Secrets (assicurati che siano impostate su Streamlit Cloud!)
         tk = st.secrets.get("TELEGRAM_TOKEN")
         cid = st.secrets.get("TELEGRAM_CHAT_ID")
-        
-        # Fallback: Se non sono nei secrets, prova a usare quelli hardcoded (solo per test, meglio secrets)
-        if not tk: tk = "8583117209:AAHJkbze27JpY-ubsusIIruUg_qiGCZuqyE"
-        if not cid: cid = "1627105623"
-
         if tk and cid: 
             requests.get(f"https://api.telegram.org/bot{tk}/sendMessage", params={"chat_id": cid, "text": text})
-    except Exception as e:
-        print(f"Errore notifica: {e}")
+    except: pass
 
 def get_stato_luce():
     try:
         sh = get_connection()
-        val = sh.worksheet(WS_CONFIG).acell('B1').value
-        return val if val else 'OFF'
+        return sh.worksheet(WS_CONFIG).acell('B1').value or 'OFF'
     except: return 'OFF'
 
-def set_luce_off():
+def set_luce_stato(stato):
     try:
         sh = get_connection()
-        sh.worksheet(WS_CONFIG).update_acell('B1', 'OFF')
+        sh.worksheet(WS_CONFIG).update_acell('B1', stato)
     except: pass
 
-# --- RECUPERO FRASI ---
-def get_frase_calendario_oggi():
+def salva_log(mood):
     try:
-        client = get_connection()
-        ws = client.worksheet(WS_CALENDARIO)
-        df = pd.DataFrame(ws.get_all_records())
-        if 'Data' not in df.columns: return None, "Errore DB"
+        ws = get_connection().worksheet(WS_LOG)
+        ws.append_row([datetime.now().strftime("%Y-%m-%d"), datetime.now().strftime("%H:%M:%S"), mood])
+    except: pass
+
+# ==============================================================================
+# 📖 RECUPERO FRASI
+# ==============================================================================
+
+def get_buongiorno_oggi():
+    try:
+        df = pd.DataFrame(get_connection().worksheet(WS_CALENDARIO).get_all_records())
         oggi = datetime.now().strftime("%Y-%m-%d")
         row = df[df['Data'].astype(str).str.strip() == oggi]
-        if row.empty: return None, "Nessun messaggio per oggi... ❤️"
-        return row.iloc[0]['Mood'], row.iloc[0]['Frase']
-    except: return None, "Errore lettura"
+        return row.iloc[0]['Frase'] if not row.empty else "Buongiorno amore mio! ❤️"
+    except: return "Buongiorno vita mia! ❤️"
 
-def get_frase_da_emozioni(mood_target, context_name="EMOZIONI"):
+def get_pensiero_ia():
     try:
-        salva_log_mood(mood_target)
-        client = get_connection()
-        ws = client.worksheet(WS_EMOZIONI)
+        ws = get_connection().worksheet(WS_EMOZIONI)
         df = pd.DataFrame(ws.get_all_records())
-        
         df['Mood_Clean'] = df['Mood'].astype(str).str.strip().str.lower()
         df['Marker_Clean'] = df['Marker'].astype(str).str.strip().str.lower()
-        target = mood_target.strip().lower()
         
-        candidati = df[(df['Mood_Clean'].str.contains(target)) & (df['Marker_Clean'] == 'available')]
-        if candidati.empty:
-            candidati = df[df['Marker_Clean'] == 'available']
-            if candidati.empty: return "Non ho bigliettini nuovi, ma ti amo! ❤️"
-            
+        candidati = df[(df['Mood_Clean'].str.contains("pensiero")) & (df['Marker_Clean'] == 'available')]
+        if candidati.empty: candidati = df[df['Marker_Clean'] == 'available']
+        
         idx = random.choice(candidati.index)
         frase = df.loc[idx, 'Frase']
         ws.update_cell(idx + 2, 4, 'USED')
-        invia_notifica(f"💌 {context_name}: Lei ha letto ({mood_target}): {frase}")
         return frase
-    except Exception as e: return f"Errore: {str(e)}"
+    except: return "Ti sto pensando intensamente... ❤️"
 
 # ==============================================================================
-# 📱 INTERFACCIA
+# 📱 LOGICA UNIFICATA
 # ==============================================================================
-st.set_page_config(page_title="Cubo Amore", page_icon="🧸", layout="centered")
-set_style() 
 
-params = st.query_params
-mode = params.get("mode", "home")
+st.set_page_config(page_title="Cubo Amore", page_icon="🧸")
+set_style()
 
-# 1. EMOZIONI
-if mode == "mood":
-    st.markdown("<h1>Come ti senti, amore? ☁️</h1>", unsafe_allow_html=True)
-    st.markdown("<p>Scegli un'emozione per aprire un bigliettino:</p>", unsafe_allow_html=True)
-    st.write("") 
-    if 'msg_mood' not in st.session_state: st.session_state['msg_mood'] = ""
-
-    c1, c2 = st.columns([1, 1], gap="medium")
-    with c1:
-        if st.button("😢 Triste"):
-            st.session_state['msg_mood'] = get_frase_da_emozioni("Triste")
-            st.rerun()
-        if st.button("🥰 Felice"):
-            st.session_state['msg_mood'] = get_frase_da_emozioni("Felice")
-            st.rerun()
-    with c2:
-        if st.button("😤 Stressata"):
-            st.session_state['msg_mood'] = get_frase_da_emozioni("Stressata")
-            st.rerun()
-        if st.button("🍂 Nostalgica"):
-            st.session_state['msg_mood'] = get_frase_da_emozioni("Nostalgica")
-            st.rerun()
-
-    if st.session_state['msg_mood']:
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown(f"""
-        <div class="message-box">
-            <span class="message-icon">💌</span>
-            {st.session_state['msg_mood']}
-            <span class="message-icon" style="margin-top:10px; font-size:25px;">✨</span>
-        </div>
-        """, unsafe_allow_html=True)
-        cc1, cc2, cc3 = st.columns([1.5, 1, 1.5])
-        with cc2:
-            st.markdown('<div class="close-btn">', unsafe_allow_html=True)
-            if st.button("Chiudi ✖️"):
-                st.session_state['msg_mood'] = ""
-                st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
-
-# 2. HOME / LAMPADA
-else:
-    # Inizializzazione stati
-    if 'reading_lamp' not in st.session_state:
-        st.session_state['reading_lamp'] = False
-        st.session_state['luce_on'] = (get_stato_luce() == 'ON')
+# 1. Capiamo se siamo in modalità Sorpresa (Luce già ON) o Buongiorno (Luce OFF)
+if 'session_init' not in st.session_state:
+    st.session_state.stato_iniziale = get_stato_luce()
+    st.session_state.session_init = True
     
-    # Se la luce è accesa (o era accesa prima del timer)
-    if st.session_state['luce_on']:
-        st.markdown("<h1>Ti sto pensando... ❤️</h1>", unsafe_allow_html=True)
-        st.markdown("<p>Si è accesa una luce per te.</p>", unsafe_allow_html=True)
-        st.write("")
-        
-        # Fase 1: Bottone da premere
-        if not st.session_state['reading_lamp']:
-            c_spacer, c_main, c_spacer2 = st.columns([1, 4, 1])
-            with c_main:
-                if st.button("💌 C'è un messaggio per te"):
-                    st.session_state['testo_lampada'] = get_frase_da_emozioni("Pensiero", context_name="💡 LAMPADA")
-                    st.session_state['reading_lamp'] = True
-                    st.rerun()
-        
-        # Fase 2: Messaggio + Timer
-        else:
-            st.markdown(f"""
-            <div class="message-box">
-                <span class="message-icon">💡</span>
-                {st.session_state['testo_lampada']}
-            </div>
-            """, unsafe_allow_html=True)
-            st.info("🕒 La luce si spegnerà tra 5 minuti...")
-            
-            # Timer 5 Minuti
-            prog_bar = st.progress(0)
-            for i in range(300): # 300 secondi
-                time.sleep(1)
-                prog_bar.progress((i + 1) / 300)
-            
-            # --- FINE TIMER ---
-            # 1. Spegniamo su Excel
-            set_luce_off()
-            # 2. Notifichiamo Telegram
-            invia_notifica("🌑 NOTIFICA: Timer scaduto. Lampada spenta.")
-            # 3. Aggiorniamo lo stato locale
-            st.session_state['luce_on'] = False
-            st.session_state['reading_lamp'] = False
-            # 4. Ricarichiamo la pagina (che ora vedrà luce_on = False)
-            st.rerun()
-
-    # SCENARIO B: BUONGIORNO (Se luce spenta)
+    # Se la luce è spenta, è il rito del buongiorno: ACCENDIAMO!
+    if st.session_state.stato_iniziale == 'OFF':
+        set_luce_stato('ON')
+        st.session_state.tipo_messaggio = "BUONGIORNO"
+        st.session_state.testo = get_buongiorno_oggi()
+        salva_log("Buongiorno (NFC)")
+        invia_notifica(f"☀️ RITO DEL MATTINO: Lei ha scansionato il tag. Luce accesa e messaggio inviato: {st.session_state.testo}")
     else:
-        st.markdown("<h1>Buongiorno Amore! ☀️</h1>", unsafe_allow_html=True)
-        st.markdown(f"<p>{datetime.now().strftime('%d %B %Y')}</p>", unsafe_allow_html=True)
-        st.write("")
-        
-        if 'frase_giorno' not in st.session_state: st.session_state['frase_giorno'] = ""
+        # La luce era già accesa da Telegram
+        st.session_state.tipo_messaggio = "SORPRESA"
+        st.session_state.testo = get_pensiero_ia()
+        invia_notifica(f"💡 SORPRESA LETTA: Ha visto il tuo 'Ti sto pensando': {st.session_state.testo}")
 
-        if not st.session_state['frase_giorno']:
-            c_spacer, c_main, c_spacer2 = st.columns([1, 4, 1])
-            with c_main:
-                if st.button("☕ Leggi la frase di oggi"):
-                    mood, testo = get_frase_calendario_oggi()
-                    if testo:
-                        st.session_state['frase_giorno'] = testo
-                        salva_log_mood("Buongiorno")
-                        invia_notifica(f"☀️ CALENDARIO: Ha letto il buongiorno: {testo}")
-                        st.rerun()
-                    else:
-                        st.warning("Nessuna frase trovata per questa data.")
-        else:
-            st.markdown(f"""
-            <div class="message-box">
-                <span class="message-icon">☕</span>
-                {st.session_state['frase_giorno']}
-            </div>
-            """, unsafe_allow_html=True)
+# 2. Visualizzazione
+if st.session_state.tipo_messaggio == "BUONGIORNO":
+    st.markdown("<h1>Buongiorno Amore! ☀️</h1>", unsafe_allow_html=True)
+    icona = "☕"
+else:
+    st.markdown("<h1>Ti sto pensando... ❤️</h1>", unsafe_allow_html=True)
+    icona = "💡"
+
+st.markdown(f"""
+    <div class="message-box">
+        <span class="icon">{icona}</span>
+        {st.session_state.testo}
+    </div>
+""", unsafe_allow_html=True)
+
+# 3. Timer di spegnimento (5 minuti)
+st.info("🕒 La lampada si spegnerà automaticamente tra 5 minuti...")
+bar = st.progress(0)
+for i in range(300):
+    time.sleep(1)
+    bar.progress((i + 1) / 300)
+
+# 4. Fine: Spegnimento e Reset
+set_luce_stato('OFF')
+invia_notifica("🌑 NOTIFICA: Il tempo è scaduto, la lampada si è spenta.")
+st.success("La lampada si è spenta. Buona giornata amore! ❤️")
+time.sleep(5)
+# Reset per la prossima scansione
+for key in list(st.session_state.keys()):
+    del st.session_state[key]
+st.rerun()
