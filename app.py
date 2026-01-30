@@ -41,11 +41,10 @@ def get_frase_emo(mood):
 st.set_page_config(page_title="Cubo Amore", page_icon="🧸")
 set_style()
 
-# LOGICA CARICAMENTO
+# --- LOGICA NAVIGAZIONE ---
 if 'view' not in st.session_state:
     db = get_db(); conf = db.worksheet("Config")
-    lamp_on = conf.acell('B1').value == 'ON'
-    if lamp_on:
+    if conf.acell('B1').value == 'ON':
         st.session_state.view = "FIXED"
         msg = conf.acell('B3').value
         st.session_state.testo = msg if (msg and len(msg.strip()) > 1) else "Ti penso tanto! ❤️"
@@ -54,7 +53,7 @@ if 'view' not in st.session_state:
     else:
         st.session_state.view = "MOODS"
 
-# VISTA FIXED (TIMER 3 MIN)
+# VISTA MESSAGGIO FISSO (3 MINUTI)
 if st.session_state.view == "FIXED":
     st.markdown(f'<div class="main-title">Dedicato a te... ❤️</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="message-box">{st.session_state.testo}</div>', unsafe_allow_html=True)
@@ -64,15 +63,16 @@ if st.session_state.view == "FIXED":
         st.session_state.view = "MOODS"; st.rerun()
 
     p = st.progress(0)
-    for i in range(180):
+    for i in range(180): # 3 MINUTI
         time.sleep(1); p.progress((i + 1) / 180)
     
+    # ALLO SCADERE: Spegni e torna a Moods
     get_db().worksheet("Config").update_acell('B1', 'OFF')
     st.session_state.view = "MOODS"; st.rerun()
 
-# VISTA MOODS
+# VISTA EMOZIONI
 elif st.session_state.view == "MOODS":
-    st.markdown('<div class="main-title">Come ti senti, amore? ☁️</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">Come ti senti oggi? ☁️</div>', unsafe_allow_html=True)
     if 'm_msg' not in st.session_state: st.session_state.m_msg = ""
     c1, c2 = st.columns(2)
     with c1:
@@ -84,4 +84,3 @@ elif st.session_state.view == "MOODS":
 
     if st.session_state.m_msg:
         st.markdown(f'<div class="message-box">{st.session_state.m_msg}</div>', unsafe_allow_html=True)
-        if st.button("Chiudi ✖️"): st.session_state.m_msg = ""; st.rerun()
