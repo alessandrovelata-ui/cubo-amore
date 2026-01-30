@@ -16,7 +16,6 @@ def set_style():
         .message-box {
             background: white; padding: 25px; border-radius: 20px; border: 4px dashed #F06292;
             font-size: 24px; color: #4A142F !important; text-align: center; font-weight: 700;
-            box-shadow: 0 10px 20px rgba(0,0,0,0.05);
         }
         div.stButton > button { width: 100%; border-radius: 15px; font-weight: bold; height: 65px; background: white; color: #D81B60; border: 2px solid #F48FB1; }
     </style>
@@ -45,11 +44,12 @@ set_style()
 # LOGICA CARICAMENTO
 if 'view' not in st.session_state:
     db = get_db(); conf = db.worksheet("Config")
-    if conf.acell('B1').value == 'ON':
+    lamp_on = conf.acell('B1').value == 'ON'
+    if lamp_on:
         st.session_state.view = "FIXED"
         msg = conf.acell('B3').value
         st.session_state.testo = msg if (msg and len(msg.strip()) > 1) else "Ti penso tanto! ❤️"
-        conf.update_acell('B3', '') # Svuota B3
+        conf.update_acell('B3', '') 
         invia_notifica(f"🔔 Letto: '{st.session_state.testo}'")
     else:
         st.session_state.view = "MOODS"
@@ -74,7 +74,6 @@ if st.session_state.view == "FIXED":
 elif st.session_state.view == "MOODS":
     st.markdown('<div class="main-title">Come ti senti, amore? ☁️</div>', unsafe_allow_html=True)
     if 'm_msg' not in st.session_state: st.session_state.m_msg = ""
-    
     c1, c2 = st.columns(2)
     with c1:
         if st.button("😢 Triste"): st.session_state.m_msg = get_frase_emo("Triste"); st.rerun()
