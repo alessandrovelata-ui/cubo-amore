@@ -5,7 +5,7 @@ from google.oauth2.service_account import Credentials
 import json, requests, time
 from datetime import datetime
 
-# --- CONFIGURAZIONE ---
+# --- SETUP ---
 SCOPE = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 SHEET_NAME = "CuboAmoreDB"
 
@@ -13,16 +13,15 @@ def set_style():
     st.markdown("""
     <style>
         .stApp { background-color: #FFF0F5; }
-        h1, p, div { color: #880E4F !important; text-align: center; font-family: sans-serif; }
-        h1 { font-size: 40px !important; font-weight: bold; }
+        h1, p, div, span { color: #880E4F !important; text-align: center; font-family: 'Nunito', sans-serif; font-weight: bold; }
+        h1 { font-size: 42px !important; color: #C2185B !important; }
         div.stButton > button {
-            width: 100%; height: 80px; background: white; color: #D81B60 !important;
-            font-size: 24px !important; font-weight: bold; border-radius: 20px;
-            border: 3px solid #F48FB1; margin-bottom: 15px;
+            width: 100%; height: 75px; background: white; color: #D81B60 !important;
+            font-size: 24px !important; border-radius: 20px; border: 3px solid #F48FB1;
         }
         .message-box {
             background: white; padding: 30px; border-radius: 20px; border: 4px dashed #F06292;
-            font-size: 26px; font-weight: bold; color: #4A142F !important; box-shadow: 0 10px 20px rgba(0,0,0,0.05);
+            font-size: 26px; color: #4A142F !important;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -38,15 +37,15 @@ def invia_notifica(txt):
                  params={"chat_id": st.secrets['TELEGRAM_CHAT_ID'], "text": txt})
 
 def get_frase_emo(mood):
-    ws = get_db().worksheet("Emozioni")
+    db = get_db()
+    ws = db.worksheet("Emozioni")
     df = pd.DataFrame(ws.get_all_records())
-    df['Mark_C'] = df['Marker'].astype(str).str.strip().str.lower()
-    cand = df[(df['Mood'].str.contains(mood, case=False)) & (df['Mark_C'] == 'available')]
-    if cand.empty: cand = df[df['Mark_C'] == 'available']
+    cand = df[(df['Mood'].str.contains(mood, case=False)) & (df['Marker'] == 'AVAILABLE')]
+    if cand.empty: cand = df[df['Marker'] == 'AVAILABLE']
     idx = cand.index[0]
     frase = cand.loc[idx, 'Frase']
     ws.update_cell(idx + 2, 4, 'USED')
-    get_db().worksheet("Log_Mood").append_row([datetime.now().strftime("%Y-%m-%d"), datetime.now().strftime("%H:%M:%S"), mood])
+    db.worksheet("Log_Mood").append_row([datetime.now().strftime("%Y-%m-%d"), datetime.now().strftime("%H:%M:%S"), mood])
     invia_notifica(f"💌 {mood}: Letto '{frase}'")
     return frase
 
@@ -59,12 +58,11 @@ if 'view' not in st.session_state:
     lamp_on = conf.acell('B1').value == 'ON'
     mode = conf.acell('B2').value
     
-    # 1. OVERRIDE PENSIERO
+    # 1. OVERRIDE PENSIERO (Da Telegram)
     if lamp_on and mode == "PENSIERO":
         st.session_state.view = "FIXED"
         st.session_state.testo = get_frase_emo("Pensiero")
         st.session_state.title = "Ti sto pensando... ❤️"
-        invia_notifica("💡 PENSIERO: Ha letto il tuo messaggio speciale.")
     
     # 2. PRIMA SCANSIONE (BUONGIORNO)
     else:
@@ -79,7 +77,7 @@ if 'view' not in st.session_state:
             st.session_state.view = "FIXED"
             st.session_state.title = "Buongiorno Amore! ☀️"
             get_db().worksheet("Log_Mood").append_row([oggi, datetime.now().strftime("%H:%M:%S"), "Buongiorno"])
-            invia_notifica(f"☀️ BUONGIORNO: Prima scansione di oggi. Letto: {st.session_state.testo}")
+            invia_notifica(f"☀️ BUONGIORNO: Prima scansione. Letto: {st.session_state.testo}")
         else:
             st.session_state.view = "MOODS"
 
@@ -100,8 +98,13 @@ if st.session_state.view == "MOODS":
 elif st.session_state.view == "FIXED":
     st.markdown(f"<h1>{st.session_state.title}</h1>")
     st.markdown(f'<div class="message-box">{st.session_state.testo}</div>', unsafe_allow_html=True)
-    time.sleep(300)
+    
+    prog = st.progress(0)
+    for i in range(300):
+        time.sleep(1)
+        prog.progress((i + 1) / 300)
+    
     get_db().worksheet("Config").update_acell('B1', 'OFF')
-    invia_notifica("🌑 NOTIFICA: Lampada spenta (timer 5 min).")
+    invia_notifica("🌑 NOTIFICA: Lampada spenta.")
     st.session_state.view = "MOODS"
     st.rerun()
