@@ -19,7 +19,10 @@ def set_style():
             background: white; padding: 25px; border-radius: 20px; border: 4px dashed #F06292;
             font-size: 24px; color: #4A142F !important; text-align: center; font-weight: 700;
         }
-        div.stButton > button { width: 100%; border-radius: 20px; font-weight: bold; height: 70px; font-size: 20px !important;}
+        div.stButton > button { 
+            width: 100%; border-radius: 20px; font-weight: bold; height: 70px; 
+            font-size: 20px !important; background-color: #D81B60; color: white; border: none;
+        }
     </style>
     """, unsafe_allow_html=True)
 
@@ -39,76 +42,81 @@ def get_buongiorno():
     try:
         return df[df['Data'] == oggi].iloc[0]['Frase']
     except:
-        return "Buongiorno Bimba mia! ❤️"
+        return "Buongiorno Tata! Sei il mio primo pensiero. ❤️"
 
 def get_frase_emo(mood):
     db = get_db(); ws = db.worksheet("Emozioni")
     df = pd.DataFrame(ws.get_all_records()); df.columns = df.columns.str.strip()
     cand = df[(df['Mood'].str.contains(mood, case=False)) & (df['Marker'] == 'AVAILABLE')]
-    if cand.empty: return "Sono sempre qui per te. ❤️"
+    if cand.empty: return "Sei speciale! ❤️"
     ws.update_cell(cand.index[0] + 2, 4, 'USED')
     return cand.iloc[0]['Frase']
 
 st.set_page_config(page_title="Cubo Amore", page_icon="🧸")
 set_style()
 
+# Inizializziamo la vista sulla Landing Page
 if 'view' not in st.session_state:
     st.session_state.view = "LANDING"
 
-# --- 1. SCHERMATA DI BENVENUTO (LANDING) ---
+db = get_db(); conf = db.worksheet("Config")
+
+# --- 1. SCHERMATA INIZIALE (LANDING PAGE) ---
 if st.session_state.view == "LANDING":
-    st.markdown('<div class="main-title">Ciao Cucciola...</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">Ciao Bimba... ❤️</div>', unsafe_allow_html=True)
     st.markdown('<div class="heart">❤️</div>', unsafe_allow_html=True)
     
     if st.button("Entra nel nostro mondo ✨"):
-        invia_notifica("🔔 La tua Bimba è entrata nell'app!")
-        db = get_db(); conf = db.worksheet("Config")
+        # Notifica a te su Telegram appena preme il tasto
+        invia_notifica("🔔 La tua Tata è entrata nell'app!")
         
-        # LOGICA PRIORITÀ: Pensiero (B1 == ON)
+        # LOGICA DI PRIORITÀ: Se tu hai acceso la lampada (B1='ON'), mostra il pensiero
         if conf.acell('B1').value == 'ON':
             st.session_state.view = "FIXED"
             msg = conf.acell('B3').value
-            st.session_state.testo = msg if (msg and len(msg.strip()) > 1) else "Ti penso tanto! ❤️"
-            conf.update_acell('B3', '') 
+            st.session_state.testo = msg if (msg and len(msg.strip()) > 1) else "Ti penso! ❤️"
+            # Non svuotiamo subito B3 per permettere al cubo fisico di leggerlo, 
+            # lo Streamlit lo mostrerà finché non preme 'Spegni'
             st.rerun()
         
-        # LOGICA BUONGIORNO (Solo 1 volta al giorno)
+        # LOGICA DEL GIORNO: Primo log -> Buongiorno, Successivi -> Emozioni
         oggi = datetime.now().strftime("%Y-%m-%d")
         ultimo_log = conf.acell('B4').value
         
         if ultimo_log != oggi:
             st.session_state.view = "BUONGIORNO"
             st.session_state.testo = get_buongiorno()
-            conf.update_acell('B4', oggi) # Segna il log di oggi
+            conf.update_acell('B4', oggi) # Segna che oggi è già entrata
             st.rerun()
         else:
-            # Dal secondo log in poi, vai alle emozioni
             st.session_state.view = "MOODS"
             st.rerun()
 
-# --- 2. VISTA PENSIERO (FIXED - 3 MIN) ---
+# --- 2. VISTA PENSIERO (PREVALE SU TUTTO) ---
 elif st.session_state.view == "FIXED":
-    st.markdown('<div class="main-title">Un pensiero per te... ❤️</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">Dedicato a te... ❤️</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="message-box">{st.session_state.testo}</div>', unsafe_allow_html=True)
     
     if st.button("Spegni Lampada 🌑"):
-        get_db().worksheet("Config").update_acell('B1', 'OFF')
+        conf.update_acell('B1', 'OFF')
         st.session_state.view = "MOODS"; st.rerun()
 
+    # Barra di progresso per i 3 minuti di lampada accesa
     p = st.progress(0)
-    for i in range(180):
+    for i in range(180): 
         time.sleep(1); p.progress((i + 1) / 180)
-    get_db().worksheet("Config").update_acell('B1', 'OFF')
+    
+    conf.update_acell('B1', 'OFF')
     st.session_state.view = "MOODS"; st.rerun()
 
-# --- 3. VISTA BUONGIORNO (Solo primo log) ---
+# --- 3. VISTA BUONGIORNO (SOLO PRIMO LOG) ---
 elif st.session_state.view == "BUONGIORNO":
-    st.markdown('<div class="main-title">Buongiorno Tata! ☀️</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">Buongiorno Cucciola! ☀️</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="message-box">{st.session_state.testo}</div>', unsafe_allow_html=True)
     if st.button("Vai alle Emozioni ☁️"):
         st.session_state.view = "MOODS"; st.rerun()
 
-# --- 4. VISTA EMOZIONI ---
+# --- 4. VISTA EMOZIONI (MODALITÀ NORMALE) ---
 elif st.session_state.view == "MOODS":
     st.markdown('<div class="main-title">Come ti senti oggi? ☁️</div>', unsafe_allow_html=True)
     if 'm_msg' not in st.session_state: st.session_state.m_msg = ""
