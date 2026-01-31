@@ -50,58 +50,60 @@ def get_frase_emo(mood):
     cand = df[(df['Mood'].str.contains(mood, case=False)) & (df['Marker'] == 'AVAILABLE')]
     if cand.empty: return "Sei speciale! ❤️"
     ws.update_cell(cand.index[0] + 2, 4, 'USED')
-    return cand.iloc[0]['Frase']
+    frase = cand.iloc[0]['Frase']
+    # NOTIFICA: Invia il mood scelto e la frase che le è apparsa
+    invia_notifica(f"Mood: {mood} ☁️\nHa letto: \"{frase}\"")
+    return frase
 
 st.set_page_config(page_title="Cubo Amore", page_icon="🧸")
 set_style()
 
-# Inizializziamo la vista sulla Landing Page
 if 'view' not in st.session_state:
     st.session_state.view = "LANDING"
 
 db = get_db(); conf = db.worksheet("Config")
 
-# --- 1. SCHERMATA INIZIALE (LANDING PAGE) ---
+# PRIORITÀ ASSOLUTA: Pensiero attivo (B1=ON)
+if conf.acell('B1').value == 'ON' and st.session_state.view != "FIXED":
+    st.session_state.view = "FIXED"
+    msg = conf.acell('B3').value
+    st.session_state.testo = msg if (msg and len(msg.strip()) > 1) else "Ti penso! ❤️"
+    # NOTIFICA: Ti avvisa che sta leggendo il tuo pensiero speciale
+    invia_notifica(f"💌 Sta leggendo il tuo pensiero: \"{st.session_state.testo}\"")
+    conf.update_acell('B3', '') 
+
+# --- 1. LANDING PAGE ---
 if st.session_state.view == "LANDING":
     st.markdown('<div class="main-title">Ciao Bimba... ❤️</div>', unsafe_allow_html=True)
     st.markdown('<div class="heart">❤️</div>', unsafe_allow_html=True)
     
     if st.button("Entra nel nostro mondo ✨"):
-        # Notifica a te su Telegram appena preme il tasto
         invia_notifica("🔔 La tua Tata è entrata nell'app!")
         
-        # LOGICA DI PRIORITÀ: Se tu hai acceso la lampada (B1='ON'), mostra il pensiero
-        if conf.acell('B1').value == 'ON':
-            st.session_state.view = "FIXED"
-            msg = conf.acell('B3').value
-            st.session_state.testo = msg if (msg and len(msg.strip()) > 1) else "Ti penso! ❤️"
-            # Non svuotiamo subito B3 per permettere al cubo fisico di leggerlo, 
-            # lo Streamlit lo mostrerà finché non preme 'Spegni'
-            st.rerun()
-        
-        # LOGICA DEL GIORNO: Primo log -> Buongiorno, Successivi -> Emozioni
         oggi = datetime.now().strftime("%Y-%m-%d")
         ultimo_log = conf.acell('B4').value
         
         if ultimo_log != oggi:
             st.session_state.view = "BUONGIORNO"
             st.session_state.testo = get_buongiorno()
-            conf.update_acell('B4', oggi) # Segna che oggi è già entrata
+            conf.update_acell('B4', oggi)
+            # NOTIFICA: Ti avvisa che ha letto il buongiorno del calendario
+            invia_notifica(f"☀️ Ha letto il Buongiorno: \"{st.session_state.testo}\"")
             st.rerun()
         else:
             st.session_state.view = "MOODS"
             st.rerun()
 
-# --- 2. VISTA PENSIERO (PREVALE SU TUTTO) ---
+# --- 2. VISTA PENSIERO (FIXED) ---
 elif st.session_state.view == "FIXED":
     st.markdown('<div class="main-title">Dedicato a te... ❤️</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="message-box">{st.session_state.testo}</div>', unsafe_allow_html=True)
     
     if st.button("Spegni Lampada 🌑"):
         conf.update_acell('B1', 'OFF')
+        invia_notifica("🌑 Ha spento la lampada.")
         st.session_state.view = "MOODS"; st.rerun()
 
-    # Barra di progresso per i 3 minuti di lampada accesa
     p = st.progress(0)
     for i in range(180): 
         time.sleep(1); p.progress((i + 1) / 180)
@@ -109,14 +111,14 @@ elif st.session_state.view == "FIXED":
     conf.update_acell('B1', 'OFF')
     st.session_state.view = "MOODS"; st.rerun()
 
-# --- 3. VISTA BUONGIORNO (SOLO PRIMO LOG) ---
+# --- 3. VISTA BUONGIORNO ---
 elif st.session_state.view == "BUONGIORNO":
     st.markdown('<div class="main-title">Buongiorno Cucciola! ☀️</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="message-box">{st.session_state.testo}</div>', unsafe_allow_html=True)
     if st.button("Vai alle Emozioni ☁️"):
         st.session_state.view = "MOODS"; st.rerun()
 
-# --- 4. VISTA EMOZIONI (MODALITÀ NORMALE) ---
+# --- 4. VISTA EMOZIONI ---
 elif st.session_state.view == "MOODS":
     st.markdown('<div class="main-title">Come ti senti oggi? ☁️</div>', unsafe_allow_html=True)
     if 'm_msg' not in st.session_state: st.session_state.m_msg = ""
