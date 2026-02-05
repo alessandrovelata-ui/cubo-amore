@@ -9,22 +9,14 @@ SCOPE = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis
 SHEET_NAME = "CuboAmoreDB"
 
 def set_style():
-    st.markdown("""
-    <style>
+    st.markdown("""<style>
         .stApp { background-color: #FFF0F5; }
         .main-title { color: #C2185B !important; text-align: center; font-size: 38px !important; font-weight: 800; margin-top: 20px;}
         .heart { font-size: 100px; text-align: center; margin: 40px 0; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
-        .message-box {
-            background: white; padding: 25px; border-radius: 20px; border: 4px dashed #F06292;
-            font-size: 24px; color: #4A142F !important; text-align: center; font-weight: 700;
-        }
-        div.stButton > button { 
-            width: 100%; border-radius: 20px; font-weight: bold; height: 70px; 
-            font-size: 20px !important; background-color: #D81B60; color: white; border: none;
-        }
-    </style>
-    """, unsafe_allow_html=True)
+        .message-box { background: white; padding: 25px; border-radius: 20px; border: 4px dashed #F06292; font-size: 24px; color: #4A142F !important; text-align: center; font-weight: 700; }
+        div.stButton > button { width: 100%; border-radius: 20px; font-weight: bold; height: 70px; font-size: 20px !important; background-color: #D81B60; color: white; border: none; }
+    </style>""", unsafe_allow_html=True)
 
 @st.cache_resource
 def get_db():
@@ -32,102 +24,65 @@ def get_db():
     return gspread.authorize(Credentials.from_service_account_info(creds_dict, scopes=SCOPE)).open(SHEET_NAME)
 
 def invia_notifica(txt):
-    requests.get(f"https://api.telegram.org/bot{st.secrets['TELEGRAM_TOKEN']}/sendMessage", 
-                  params={"chat_id": st.secrets['TELEGRAM_CHAT_ID'], "text": txt})
+    requests.get(f"https://api.telegram.org/bot{st.secrets['TELEGRAM_TOKEN']}/sendMessage", params={"chat_id": st.secrets['TELEGRAM_CHAT_ID'], "text": txt})
 
-def get_buongiorno():
-    db = get_db(); ws = db.worksheet("Calendario")
-    df = pd.DataFrame(ws.get_all_records())
-    oggi = datetime.now().strftime("%Y-%m-%d")
+def update_lamp(tag, frase=""):
     try:
-        return df[df['Data'] == oggi].iloc[0]['Frase']
-    except:
-        return "Buongiorno Tata! Sei il mio primo pensiero. ❤️"
+        db = get_db(); conf = db.worksheet("Config")
+        conf.update_acell('B1', 'ON')
+        conf.update_acell('B2', tag.upper()) # SCRIVE IL TAG (BUONGIORNO, FELICE, ECC.)
+        if frase: conf.update_acell('B3', frase)
+    except: pass
 
-# --- MODIFICA: Questa funzione ora accende anche la luce ---
 def get_frase_emo(mood):
-    db = get_db(); ws_emo = db.worksheet("Emozioni"); conf = db.worksheet("Config")
-    df = pd.DataFrame(ws_emo.get_all_records()); df.columns = df.columns.str.strip()
+    db = get_db(); ws = db.worksheet("Emozioni")
+    df = pd.DataFrame(ws.get_all_records()); df.columns = df.columns.str.strip()
     cand = df[(df['Mood'].str.contains(mood, case=False)) & (df['Marker'] == 'AVAILABLE')]
-    
-    if cand.empty: 
-        frase = "Sei speciale! ❤️"
-    else:
-        ws_emo.update_cell(cand.index[0] + 2, 4, 'USED')
-        frase = cand.iloc[0]['Frase']
-    
-    # ACCENSIONE AUTOMATICA LUCE EMOZIONE
-    tag = mood.upper()
-    conf.update_acell('B1', 'ON')
-    conf.update_acell('B2', tag) 
-    
+    frase = cand.iloc[0]['Frase'] if not cand.empty else "Sei speciale! ❤️"
+    if not cand.empty: ws.update_cell(cand.index[0] + 2, 4, 'USED')
+    update_lamp(mood, frase) # AGGIORNA B2
     invia_notifica(f"Mood: {mood} ☁️\nHa letto: \"{frase}\"")
     return frase
 
 st.set_page_config(page_title="Cubo Amore", page_icon="🧸")
 set_style()
-
-if 'view' not in st.session_state:
-    st.session_state.view = "LANDING"
-
+if 'view' not in st.session_state: st.session_state.view = "LANDING"
 db = get_db(); conf = db.worksheet("Config")
 
-# PRIORITÀ ASSOLUTA: Pensiero attivo (B1=ON)
-if conf.acell('B1').value == 'ON' and st.session_state.view != "FIXED":
-    # Se il tag è PENSIERO, mostriamo la vista speciale
-    if conf.acell('B2').value == 'PENSIERO':
-        st.session_state.view = "FIXED"
-        msg = conf.acell('B3').value
-        st.session_state.testo = msg if (msg and len(msg.strip()) > 1) else "Ti penso! ❤️"
-        invia_notifica(f"💌 Sta leggendo il tuo pensiero: \"{st.session_state.testo}\"")
-        # Svuotiamo B3 dopo la lettura
-        conf.update_acell('B3', '') 
+# Priorità Pensiero
+if conf.acell('B1').value == 'ON' and st.session_state.view != "FIXED" and conf.acell('B2').value == 'PENSIERO':
+    st.session_state.view = "FIXED"; msg = conf.acell('B3').value
+    st.session_state.testo = msg if msg else "Ti penso! ❤️"
+    conf.update_acell('B3', '') 
 
-# --- 1. LANDING PAGE ---
 if st.session_state.view == "LANDING":
     st.markdown('<div class="main-title">Ciao Bimba... ❤️</div>', unsafe_allow_html=True)
     st.markdown('<div class="heart">❤️</div>', unsafe_allow_html=True)
-    
     if st.button("Entra nel nostro mondo ✨"):
-        invia_notifica("🔔 La tua Tata è entrata nell'app!")
-        oggi = datetime.now().strftime("%Y-%m-%d")
-        ultimo_log = conf.acell('B4').value
-        
+        oggi = datetime.now().strftime("%Y-%m-%d"); ultimo_log = conf.acell('B4').value
         if ultimo_log != oggi:
-            # ACCENSIONE AUTOMATICA LUCE BUONGIORNO
-            conf.update_acell('B1', 'ON')
-            conf.update_acell('B2', 'BUONGIORNO')
-            
             st.session_state.view = "BUONGIORNO"
-            st.session_state.testo = get_buongiorno()
+            ws_cal = db.worksheet("Calendario"); df_cal = pd.DataFrame(ws_cal.get_all_records())
+            frase = df_cal[df_cal['Data'] == oggi].iloc[0]['Frase'] if not df_cal[df_cal['Data'] == oggi].empty else "Buongiorno! ❤️"
+            st.session_state.testo = frase
             conf.update_acell('B4', oggi)
-            invia_notifica(f"☀️ Ha letto il Buongiorno: \"{st.session_state.testo}\"")
+            update_lamp("BUONGIORNO", frase) # SCRIVE BUONGIORNO IN B2
             st.rerun()
         else:
-            st.session_state.view = "MOODS"
-            st.rerun()
+            st.session_state.view = "MOODS"; st.rerun()
 
-# --- 2. VISTA PENSIERO (FIXED) ---
 elif st.session_state.view == "FIXED":
     st.markdown('<div class="main-title">Dedicato a te... ❤️</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="message-box">{st.session_state.testo}</div>', unsafe_allow_html=True)
-    
     if st.button("Spegni Lampada 🌑"):
-        conf.update_acell('B1', 'OFF')
-        conf.update_acell('B2', 'OFF')
-        invia_notifica("🌑 Ha spento la lampada.")
-        st.session_state.view = "MOODS"; st.rerun()
+        conf.update_acell('B1', 'OFF'); st.session_state.view = "MOODS"; st.rerun()
 
-# --- 3. VISTA BUONGIORNO ---
 elif st.session_state.view == "BUONGIORNO":
     st.markdown('<div class="main-title">Buongiorno Cucciola! ☀️</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="message-box">{st.session_state.testo}</div>', unsafe_allow_html=True)
-    
-    if st.button("Vai alle Emozioni ☁️"):
-        conf.update_acell('B1', 'OFF') # Spegniamo dopo la lettura se vuole
-        st.session_state.view = "MOODS"; st.rerun()
+    if st.button("Vai alle Emozioni ☁️"): 
+        conf.update_acell('B1', 'OFF'); st.session_state.view = "MOODS"; st.rerun()
 
-# --- 4. VISTA EMOZIONI ---
 elif st.session_state.view == "MOODS":
     st.markdown('<div class="main-title">Come ti senti oggi? ☁️</div>', unsafe_allow_html=True)
     if 'm_msg' not in st.session_state: st.session_state.m_msg = ""
@@ -138,11 +93,4 @@ elif st.session_state.view == "MOODS":
     with c2:
         if st.button("😤 Stressata"): st.session_state.m_msg = get_frase_emo("Stressata"); st.rerun()
         if st.button("🍂 Nostalgica"): st.session_state.m_msg = get_frase_emo("Nostalgica"); st.rerun()
-
-    if st.session_state.m_msg:
-        st.markdown(f'<div class="message-box">{st.session_state.m_msg}</div>', unsafe_allow_html=True)
-        if st.button("Spegni Lampada 🌑"):
-            conf.update_acell('B1', 'OFF')
-            conf.update_acell('B2', 'OFF')
-            st.session_state.m_msg = ""
-            st.rerun()
+    if st.session_state.m_msg: st.markdown(f'<div class="message-box">{st.session_state.m_msg}</div>', unsafe_allow_html=True)
