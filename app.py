@@ -9,15 +9,87 @@ SCOPE = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis
 SHEET_NAME = "CuboAmoreDB"
 
 def set_style():
-    st.markdown("""<style>
-        .stApp { background-color: #FFF0F5; }
-        .main-title { color: #C2185B !important; text-align: center; font-size: 38px !important; font-weight: 800; margin-top: 20px;}
-        .heart { font-size: 100px; text-align: center; margin: 40px 0; animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
-        .message-box { background: white; padding: 25px; border-radius: 20px; border: 4px dashed #F06292; font-size: 24px; color: #4A142F !important; text-align: center; font-weight: 700; margin-bottom: 20px; }
-        div.stButton > button { width: 100%; border-radius: 20px; font-weight: bold; height: 70px; font-size: 20px !important; background-color: #D81B60; color: white; border: none; margin-bottom: 10px; }
-        .timer-text { text-align: center; color: #AD1457; font-size: 14px; margin-top: 10px; }
-    </style>""", unsafe_allow_html=True)
+    st.markdown("""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;700;800&display=swap');
+
+        /* Sfondo Viola Polvere Soft */
+        .stApp { 
+            background-color: #F3F0F7; 
+            font-family: 'Montserrat', sans-serif;
+        }
+
+        /* Titolo Professionale */
+        .main-title { 
+            color: #2D2438 !important; 
+            text-align: center; 
+            font-size: 32px !important; 
+            font-weight: 800; 
+            letter-spacing: -1px;
+            margin-top: 20px;
+            padding-bottom: 10px;
+        }
+
+        /* Cuore più discreto ed elegante */
+        .heart { 
+            font-size: 80px; 
+            text-align: center; 
+            margin: 30px 0; 
+            filter: drop-shadow(0 0 10px rgba(103, 58, 183, 0.2));
+            animation: pulse 2s infinite ease-in-out; 
+        }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+
+        /* Box messaggi raffinato */
+        .message-box { 
+            background: white; 
+            padding: 30px; 
+            border-radius: 15px; 
+            border-left: 8px solid #673AB7; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            font-size: 20px; 
+            color: #453A54 !important; 
+            text-align: center; 
+            font-weight: 400; 
+            line-height: 1.6;
+            margin-bottom: 25px; 
+        }
+
+        /* Bottoni Minimal e Professionali */
+        div.stButton > button { 
+            width: 100%; 
+            border-radius: 12px; 
+            font-weight: 600; 
+            height: 60px; 
+            font-size: 16px !important; 
+            background-color: #673AB7; 
+            color: white; 
+            border: none; 
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(103, 58, 183, 0.2);
+            margin-bottom: 12px;
+        }
+        
+        div.stButton > button:hover {
+            background-color: #512DA8;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(103, 58, 183, 0.3);
+        }
+
+        .timer-text { 
+            text-align: center; 
+            color: #8E849B; 
+            font-size: 13px; 
+            font-weight: 500;
+            margin-top: 15px; 
+        }
+        
+        /* Nasconde header e footer Streamlit per un look più app-like */
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        header {visibility: hidden;}
+    </style>
+    """, unsafe_allow_html=True)
 
 @st.cache_resource
 def get_db():
@@ -33,7 +105,6 @@ def invia_notifica(txt):
 def update_lamp(tag, frase=""):
     try:
         db = get_db(); conf = db.worksheet("Config")
-        # Aggiornamento massivo per ridurre la latenza
         conf.update('B1:B3', [['ON'], [tag.upper()], [str(frase)]])
     except: pass
 
@@ -64,7 +135,7 @@ conf = db.worksheet("Config")
 
 def start_auto_off(seconds=300):
     minuti = seconds // 60
-    st.markdown(f'<p class="timer-text">La lampada si spegnerà tra {minuti} minuti...</p>', unsafe_allow_html=True)
+    st.markdown(f'<p class="timer-text">La lampada si spegnerà automaticamente tra {minuti} minuti...</p>', unsafe_allow_html=True)
     p = st.progress(0)
     for i in range(seconds):
         time.sleep(1)
@@ -73,8 +144,7 @@ def start_auto_off(seconds=300):
     st.session_state.view = "MOODS"
     st.rerun()
 
-# Priorità Pensiero di Ale
-if st.session_state.view == "MOODS": # Controllo solo se siamo nella dashboard
+if st.session_state.view == "MOODS":
     check_status = conf.batch_get(['B1', 'B2', 'B3'])
     if check_status[0][0][0] == 'ON' and check_status[1][0][0] == 'PENSIERO':
         st.session_state.view = "FIXED"
@@ -85,11 +155,11 @@ if st.session_state.view == "MOODS": # Controllo solo se siamo nella dashboard
 # --- 1. LANDING PAGE ---
 if st.session_state.view == "LANDING":
     st.markdown('<div class="main-title">Ciao Bimba... ❤️</div>', unsafe_allow_html=True)
-    st.markdown('<div class="heart">❤️</div>', unsafe_allow_html=True)
+    st.markdown('<div class="heart">💜</div>', unsafe_allow_html=True)
     if st.button("Entra nel nostro mondo ✨"):
         invia_notifica("🔔 Anita è entrata nell'app")
         oggi = datetime.now().strftime("%Y-%m-%d")
-        status_row = conf.row_values(4) # Legge riga 4 per il log
+        status_row = conf.row_values(4)
         ultimo_log = status_row[1] if len(status_row) > 1 else ""
         
         if ultimo_log != oggi:
@@ -137,12 +207,10 @@ elif st.session_state.view == "MOODS":
         if st.button("😢 Triste"): st.session_state.m_msg = get_frase_emo("Triste"); st.rerun()
         if st.button("🥰 Felice"): st.session_state.m_msg = get_frase_emo("Felice"); st.rerun()
         
-        # --- FIX COUNTDOWN (Velocizzato) ---
         if st.button("⏳ Countdown"):
-            with st.spinner("Sto calcolando quanto manca..."):
+            with st.spinner("Calcolo in corso..."):
                 try:
                     ws_ev = db.worksheet("events")
-                    # Leggo B2, C2, D2 in un colpo solo!
                     dati = ws_ev.get_values("B2:D2")[0]
                     data_fine_str = dati[0]
                     evento = dati[1]
@@ -156,8 +224,8 @@ elif st.session_state.view == "MOODS":
                     invia_notifica(f"⏳ Anita ha attivato il Countdown per: {evento}")
                     st.session_state.view = "COUNTDOWN"
                     st.rerun()
-                except Exception as e:
-                    st.error("Assicurati di aver configurato il countdown su Telegram!")
+                except:
+                    st.error("Errore configurazione countdown.")
 
     with c2:
         if st.button("😤 Stressata"): st.session_state.m_msg = get_frase_emo("Stressata"); st.rerun()
