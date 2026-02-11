@@ -46,10 +46,14 @@ def get_frase_emo(mood):
     return frase
 
 def spegni_tutto():
-    db = get_db(); conf = db.worksheet("Config")
-    conf.update_acell('B1', 'OFF')
-    conf.update_acell('B2', 'OFF')
-    invia_notifica("🌑 La lampada si è spenta.")
+    try:
+        db = get_db()
+        conf = db.worksheet("Config")
+        conf.update_acell('B1', 'OFF')
+        conf.update_acell('B2', 'OFF')
+        conf.update_acell('B3', '')  # <--- AGGIUNGI QUESTA RIGA per pulire il testo!
+        invia_notifica("🌑 La lampada si è spenta.")
+    except: pass
 
 st.set_page_config(page_title="Cubo Amore", page_icon="🧸")
 set_style()
