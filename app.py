@@ -11,83 +11,95 @@ SHEET_NAME = "CuboAmoreDB"
 def set_style():
     st.markdown("""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600&family=Playfair+Display:ital,wght@0,700;1,400&family=Montserrat:wght@400;600&display=swap');
 
-        /* Sfondo Viola Polvere Soft */
+        /* Sfondo Viola Polvere */
         .stApp { 
-            background-color: #F3F0F7; 
+            background-color: #F8F6FA; 
             font-family: 'Montserrat', sans-serif;
         }
 
-        /* Titolo Professionale */
+        /* Titolo Elegante */
         .main-title { 
-            color: #2D2438 !important; 
+            color: #4A3B52 !important; 
             text-align: center; 
-            font-size: 32px !important; 
-            font-weight: 800; 
-            letter-spacing: -1px;
-            margin-top: 20px;
-            padding-bottom: 10px;
+            font-family: 'Playfair Display', serif;
+            font-size: 30px !important; 
+            font-weight: 700; 
+            margin-top: 10px;
+            margin-bottom: 0px;
         }
 
-        /* Cuore più discreto ed elegante */
+        /* Cuore Animato */
         .heart { 
-            font-size: 80px; 
+            font-size: 60px; 
             text-align: center; 
-            margin: 30px 0; 
-            filter: drop-shadow(0 0 10px rgba(103, 58, 183, 0.2));
-            animation: pulse 2s infinite ease-in-out; 
+            margin: 10px 0; 
+            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.1));
+            animation: pulse 2.5s infinite ease-in-out; 
         }
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
 
-        /* Box messaggi raffinato */
+        /* Box Messaggi in Corsivo Elegante */
         .message-box { 
-            background: white; 
-            padding: 30px; 
-            border-radius: 15px; 
-            border-left: 8px solid #673AB7; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-            font-size: 20px; 
-            color: #453A54 !important; 
+            background: #FFFFFF; 
+            padding: 20px; 
+            border-radius: 20px; 
+            border: 1px solid #E0D7E7;
+            box-shadow: 0 10px 25px rgba(103, 58, 183, 0.05);
+            font-family: 'Dancing Script', cursive;
+            font-size: 26px !important; 
+            color: #5E4B72 !important; 
             text-align: center; 
-            font-weight: 400; 
-            line-height: 1.6;
-            margin-bottom: 25px; 
+            line-height: 1.3;
+            margin: 15px 0;
         }
 
-        /* Bottoni Minimal e Professionali */
+        /* Bottoni Mood Professionali */
         div.stButton > button { 
             width: 100%; 
-            border-radius: 12px; 
+            border-radius: 15px; 
             font-weight: 600; 
-            height: 60px; 
-            font-size: 16px !important; 
-            background-color: #673AB7; 
+            height: 55px; 
+            background-color: #7E57C2; 
             color: white; 
             border: none; 
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 6px rgba(103, 58, 183, 0.2);
-            margin-bottom: 12px;
+            font-size: 16px !important;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 12px rgba(126, 87, 194, 0.2);
         }
         
-        div.stButton > button:hover {
-            background-color: #512DA8;
-            transform: translateY(-2px);
-            box-shadow: 0 6px 12px rgba(103, 58, 183, 0.3);
+        /* Bottone Spegni Tutto (Piccolo e in basso) */
+        .off-container {
+            text-align: center;
+            margin-top: 30px;
+        }
+        .off-container div.stButton > button {
+            background-color: #9E9E9E !important;
+            height: 40px !important;
+            width: 60% !important;
+            font-size: 14px !important;
+            opacity: 0.8;
         }
 
         .timer-text { 
             text-align: center; 
-            color: #8E849B; 
-            font-size: 13px; 
-            font-weight: 500;
-            margin-top: 15px; 
+            color: #B2A4BD; 
+            font-size: 12px; 
+            margin-top: 10px; 
         }
-        
-        /* Nasconde header e footer Streamlit per un look più app-like */
-        #MainMenu {visibility: hidden;}
-        footer {visibility: hidden;}
-        header {visibility: hidden;}
+
+        /* Emoji Enhancer */
+        .emoji {
+            display: inline-block;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+            transform: scale(1.2);
+            margin-right: 10px;
+        }
+
+        /* Fix per Mobile: Riduciamo spazi vuoti */
+        .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; }
+        #MainMenu, footer, header {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
 
@@ -109,7 +121,7 @@ def update_lamp(tag, frase=""):
     except: pass
 
 def get_frase_emo(mood):
-    with st.spinner("Sto scegliendo una frase dolce..."):
+    with st.spinner("Cerco un pensiero per te..."):
         db = get_db(); ws = db.worksheet("Emozioni")
         df = pd.DataFrame(ws.get_all_records()); df.columns = df.columns.str.strip()
         cand = df[(df['Mood'].str.contains(mood, case=False)) & (df['Marker'] == 'AVAILABLE')]
@@ -126,7 +138,7 @@ def spegni_tutto():
         invia_notifica("🌑 La lampada si è spenta.")
     except: pass
 
-st.set_page_config(page_title="Cubo Amore", page_icon="🧸")
+st.set_page_config(page_title="Cubo Amore", page_icon="🧸", layout="centered")
 set_style()
 
 if 'view' not in st.session_state: st.session_state.view = "LANDING"
@@ -135,7 +147,7 @@ conf = db.worksheet("Config")
 
 def start_auto_off(seconds=300):
     minuti = seconds // 60
-    st.markdown(f'<p class="timer-text">La lampada si spegnerà automaticamente tra {minuti} minuti...</p>', unsafe_allow_html=True)
+    st.markdown(f'<p class="timer-text">Spegnimento tra {minuti} min...</p>', unsafe_allow_html=True)
     p = st.progress(0)
     for i in range(seconds):
         time.sleep(1)
@@ -154,9 +166,9 @@ if st.session_state.view == "MOODS":
 
 # --- 1. LANDING PAGE ---
 if st.session_state.view == "LANDING":
-    st.markdown('<div class="main-title">Ciao Bimba... ❤️</div>', unsafe_allow_html=True)
-    st.markdown('<div class="heart">💜</div>', unsafe_allow_html=True)
-    if st.button("Entra nel nostro mondo ✨"):
+    st.markdown('<div class="main-title">Ciao Bimba...</div>', unsafe_allow_html=True)
+    st.markdown('<div class="heart">✨💜✨</div>', unsafe_allow_html=True)
+    if st.button("Entra nel nostro mondo ❤️"):
         invia_notifica("🔔 Anita è entrata nell'app")
         oggi = datetime.now().strftime("%Y-%m-%d")
         status_row = conf.row_values(4)
@@ -175,7 +187,7 @@ if st.session_state.view == "LANDING":
 
 # --- 2. VISTA PENSIERO (FIXED) ---
 elif st.session_state.view == "FIXED":
-    st.markdown('<div class="main-title">Dedicato a te... ❤️</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">Per te...</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="message-box">{st.session_state.testo}</div>', unsafe_allow_html=True)
     if st.button("Vai alle Emozioni ☁️"):
         st.session_state.view = "MOODS"; st.rerun()
@@ -183,7 +195,7 @@ elif st.session_state.view == "FIXED":
 
 # --- 3. VISTA BUONGIORNO ---
 elif st.session_state.view == "BUONGIORNO":
-    st.markdown('<div class="main-title">Buongiorno Cucciola! ☀️</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">Buongiorno Cucciola...</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="message-box">{st.session_state.testo}</div>', unsafe_allow_html=True)
     if st.button("Vai alle Emozioni ☁️"): 
         st.session_state.view = "MOODS"; st.rerun()
@@ -191,7 +203,7 @@ elif st.session_state.view == "BUONGIORNO":
 
 # --- 4. VISTA: COUNTDOWN ---
 elif st.session_state.view == "COUNTDOWN":
-    st.markdown('<div class="main-title">Manca poco... ⏳</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">Manca poco...</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="message-box">{st.session_state.countdown_msg}</div>', unsafe_allow_html=True)
     if st.button("Torna alle Emozioni ☁️"):
         st.session_state.view = "MOODS"; st.rerun()
@@ -199,39 +211,37 @@ elif st.session_state.view == "COUNTDOWN":
 
 # --- 5. VISTA EMOZIONI ---
 elif st.session_state.view == "MOODS":
-    st.markdown('<div class="main-title">Come ti senti oggi? ☁️</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">Come ti senti oggi?</div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align:center; margin-bottom:10px;">☁️✨☁️</div>', unsafe_allow_html=True)
     if 'm_msg' not in st.session_state: st.session_state.m_msg = ""
     
     c1, c2 = st.columns(2)
     with c1:
-        if st.button("😢 Triste"): st.session_state.m_msg = get_frase_emo("Triste"); st.rerun()
-        if st.button("🥰 Felice"): st.session_state.m_msg = get_frase_emo("Felice"); st.rerun()
-        
+        if st.button("💧 Triste"): st.session_state.m_msg = get_frase_emo("Triste"); st.rerun()
+        if st.button("💖 Felice"): st.session_state.m_msg = get_frase_emo("Felice"); st.rerun()
         if st.button("⏳ Countdown"):
-            with st.spinner("Calcolo in corso..."):
+            with st.spinner("Calcolo..."):
                 try:
                     ws_ev = db.worksheet("events")
                     dati = ws_ev.get_values("B2:D2")[0]
-                    data_fine_str = dati[0]
-                    evento = dati[1]
-                    percentuale = dati[2]
-                    
+                    data_fine_str = dati[0]; evento = dati[1]; percentuale = dati[2]
                     data_fine = datetime.strptime(data_fine_str, "%d/%m/%Y")
                     differenza = (data_fine - datetime.now()).days + 1
-                    
                     st.session_state.countdown_msg = f"Mancano {differenza} giorni a {evento} ❤️"
                     update_lamp("COUNTDOWN", str(percentuale))
-                    invia_notifica(f"⏳ Anita ha attivato il Countdown per: {evento}")
-                    st.session_state.view = "COUNTDOWN"
-                    st.rerun()
-                except:
-                    st.error("Errore configurazione countdown.")
+                    invia_notifica(f"⏳ Anita ha attivato il Countdown")
+                    st.session_state.view = "COUNTDOWN"; st.rerun()
+                except: st.error("Errore!")
 
     with c2:
-        if st.button("😤 Stressata"): st.session_state.m_msg = get_frase_emo("Stressata"); st.rerun()
-        if st.button("🍂 Nostalgica"): st.session_state.m_msg = get_frase_emo("Nostalgica"); st.rerun()
-        if st.button("🌑 Spegni tutto"):
-            spegni_tutto(); st.session_state.m_msg = ""; st.rerun()
+        if st.button("⚡ Stressata"): st.session_state.m_msg = get_frase_emo("Stressata"); st.rerun()
+        if st.button("🌙 Nostalgica"): st.session_state.m_msg = get_frase_emo("Nostalgica"); st.rerun()
+    
+    # Bottone Spegni Tutto Piccolo e in basso
+    st.markdown('<div class="off-container">', unsafe_allow_html=True)
+    if st.button("🌑 Spegni Lampada"):
+        spegni_tutto(); st.session_state.m_msg = ""; st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
     
     if st.session_state.m_msg:
         st.markdown(f'<div class="message-box">{st.session_state.m_msg}</div>', unsafe_allow_html=True)
