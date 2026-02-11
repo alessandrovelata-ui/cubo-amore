@@ -25,42 +25,43 @@ def get_db():
     return gspread.authorize(Credentials.from_service_account_info(creds_dict, scopes=SCOPE)).open(SHEET_NAME)
 
 def invia_notifica(txt):
-    requests.get(f"https://api.telegram.org/bot{st.secrets['TELEGRAM_TOKEN']}/sendMessage", params={"chat_id": st.secrets['TELEGRAM_CHAT_ID'], "text": txt})
+    try:
+        requests.get(f"https://api.telegram.org/bot{st.secrets['TELEGRAM_TOKEN']}/sendMessage", 
+                     params={"chat_id": st.secrets['TELEGRAM_CHAT_ID'], "text": txt}, timeout=5)
+    except: pass
 
 def update_lamp(tag, frase=""):
     try:
         db = get_db(); conf = db.worksheet("Config")
-        conf.update_acell('B1', 'ON')
-        conf.update_acell('B2', tag.upper())
-        if frase: conf.update_acell('B3', frase)
+        # Aggiornamento massivo per ridurre la latenza
+        conf.update('B1:B3', [['ON'], [tag.upper()], [str(frase)]])
     except: pass
 
 def get_frase_emo(mood):
-    db = get_db(); ws = db.worksheet("Emozioni")
-    df = pd.DataFrame(ws.get_all_records()); df.columns = df.columns.str.strip()
-    cand = df[(df['Mood'].str.contains(mood, case=False)) & (df['Marker'] == 'AVAILABLE')]
-    frase = cand.iloc[0]['Frase'] if not cand.empty else "Sei speciale! ❤️"
-    if not cand.empty: ws.update_cell(cand.index[0] + 2, 4, 'USED')
-    update_lamp(mood, frase)
-    invia_notifica(f"Mood: {mood} ☁️\nHa letto: \"{frase}\"")
-    return frase
+    with st.spinner("Sto scegliendo una frase dolce..."):
+        db = get_db(); ws = db.worksheet("Emozioni")
+        df = pd.DataFrame(ws.get_all_records()); df.columns = df.columns.str.strip()
+        cand = df[(df['Mood'].str.contains(mood, case=False)) & (df['Marker'] == 'AVAILABLE')]
+        frase = cand.iloc[0]['Frase'] if not cand.empty else "Sei speciale! ❤️"
+        if not cand.empty: ws.update_cell(cand.index[0] + 2, 4, 'USED')
+        update_lamp(mood, frase)
+        invia_notifica(f"Mood: {mood} ☁️\nHa letto: \"{frase}\"")
+        return frase
 
 def spegni_tutto():
     try:
-        db = get_db()
-        conf = db.worksheet("Config")
-        conf.update_acell('B1', 'OFF')
-        conf.update_acell('B2', 'OFF')
-        conf.update_acell('B3', '')  # <--- AGGIUNGI QUESTA RIGA per pulire il testo!
+        db = get_db(); conf = db.worksheet("Config")
+        conf.update('B1:B3', [['OFF'], ['OFF'], ['']])
         invia_notifica("🌑 La lampada si è spenta.")
     except: pass
 
 st.set_page_config(page_title="Cubo Amore", page_icon="🧸")
 set_style()
-if 'view' not in st.session_state: st.session_state.view = "LANDING"
-db = get_db(); conf = db.worksheet("Config")
 
-# --- LOGICA AUTO-OFF (Modificata per durata variabile) ---
+if 'view' not in st.session_state: st.session_state.view = "LANDING"
+db = get_db()
+conf = db.worksheet("Config")
+
 def start_auto_off(seconds=300):
     minuti = seconds // 60
     st.markdown(f'<p class="timer-text">La lampada si spegnerà tra {minuti} minuti...</p>', unsafe_allow_html=True)
@@ -72,11 +73,14 @@ def start_auto_off(seconds=300):
     st.session_state.view = "MOODS"
     st.rerun()
 
-# Priorità Pensiero di Ale (B2=PENSIERO)
-if conf.acell('B1').value == 'ON' and st.session_state.view != "FIXED" and conf.acell('B2').value == 'PENSIERO':
-    st.session_state.view = "FIXED"; msg = conf.acell('B3').value
-    st.session_state.testo = msg if msg else "Ti penso! ❤️"
-    conf.update_acell('B3', '') 
+# Priorità Pensiero di Ale
+if st.session_state.view == "MOODS": # Controllo solo se siamo nella dashboard
+    check_status = conf.batch_get(['B1', 'B2', 'B3'])
+    if check_status[0][0][0] == 'ON' and check_status[1][0][0] == 'PENSIERO':
+        st.session_state.view = "FIXED"
+        st.session_state.testo = check_status[2][0][0] if check_status[2][0] else "Ti penso! ❤️"
+        conf.update_acell('B3', '')
+        st.rerun()
 
 # --- 1. LANDING PAGE ---
 if st.session_state.view == "LANDING":
@@ -84,7 +88,10 @@ if st.session_state.view == "LANDING":
     st.markdown('<div class="heart">❤️</div>', unsafe_allow_html=True)
     if st.button("Entra nel nostro mondo ✨"):
         invia_notifica("🔔 Anita è entrata nell'app")
-        oggi = datetime.now().strftime("%Y-%m-%d"); ultimo_log = conf.acell('B4').value
+        oggi = datetime.now().strftime("%Y-%m-%d")
+        status_row = conf.row_values(4) # Legge riga 4 per il log
+        ultimo_log = status_row[1] if len(status_row) > 1 else ""
+        
         if ultimo_log != oggi:
             ws_cal = db.worksheet("Calendario"); df_cal = pd.DataFrame(ws_cal.get_all_records())
             frase = df_cal[df_cal['Data'] == oggi].iloc[0]['Frase'] if not df_cal[df_cal['Data'] == oggi].empty else "Buongiorno! ❤️"
@@ -100,58 +107,64 @@ if st.session_state.view == "LANDING":
 elif st.session_state.view == "FIXED":
     st.markdown('<div class="main-title">Dedicato a te... ❤️</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="message-box">{st.session_state.testo}</div>', unsafe_allow_html=True)
-    if st.button("Spegni Lampada 🌑"):
-        spegni_tutto(); st.session_state.view = "MOODS"; st.rerun()
+    if st.button("Vai alle Emozioni ☁️"):
+        st.session_state.view = "MOODS"; st.rerun()
     start_auto_off(300)
 
 # --- 3. VISTA BUONGIORNO ---
 elif st.session_state.view == "BUONGIORNO":
     st.markdown('<div class="main-title">Buongiorno Cucciola! ☀️</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="message-box">{st.session_state.testo}</div>', unsafe_allow_html=True)
-    if st.button("Spegni e vai alle Emozioni 🌑"): 
-        spegni_tutto(); st.session_state.view = "MOODS"; st.rerun()
+    if st.button("Vai alle Emozioni ☁️"): 
+        st.session_state.view = "MOODS"; st.rerun()
     start_auto_off(300)
 
-# --- 4. NUOVA VISTA: COUNTDOWN ---
+# --- 4. VISTA: COUNTDOWN ---
 elif st.session_state.view == "COUNTDOWN":
     st.markdown('<div class="main-title">Manca poco... ⏳</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="message-box">{st.session_state.countdown_msg}</div>', unsafe_allow_html=True)
-    if st.button("Spegni Lampada 🌑"):
-        spegni_tutto(); st.session_state.view = "MOODS"; st.rerun()
-    start_auto_off(900) # Spegnimento dopo 15 minuti
+    if st.button("Torna alle Emozioni ☁️"):
+        st.session_state.view = "MOODS"; st.rerun()
+    start_auto_off(900)
 
 # --- 5. VISTA EMOZIONI ---
 elif st.session_state.view == "MOODS":
     st.markdown('<div class="main-title">Come ti senti oggi? ☁️</div>', unsafe_allow_html=True)
     if 'm_msg' not in st.session_state: st.session_state.m_msg = ""
+    
     c1, c2 = st.columns(2)
     with c1:
         if st.button("😢 Triste"): st.session_state.m_msg = get_frase_emo("Triste"); st.rerun()
         if st.button("🥰 Felice"): st.session_state.m_msg = get_frase_emo("Felice"); st.rerun()
-        # AGGIUNTO: Bottone Countdown
+        
+        # --- FIX COUNTDOWN (Velocizzato) ---
         if st.button("⏳ Countdown"):
-            try:
-                ws_ev = db.worksheet("events")
-                evento = ws_ev.acell('C2').value
-                percentuale = ws_ev.acell('D2').value
-                # Calcolo giorni rimanenti (Data Fine B2 - Oggi)
-                data_fine = datetime.strptime(ws_ev.acell('B2').value, "%d/%m/%Y")
-                giorni_mancanti = (data_fine - datetime.now()).days + 1
-                
-                st.session_state.countdown_msg = f"Mancano {giorni_mancanti} giorni a {evento} ❤️"
-                update_lamp("COUNTDOWN", str(percentuale)) # Passiamo la % alla lampada via B3
-                invia_notifica(f"⏳ Anita ha attivato il Countdown per: {evento}")
-                st.session_state.view = "COUNTDOWN"
-                st.rerun()
-            except:
-                st.error("Errore nel recupero del Countdown. Configuralo prima su Telegram!")
+            with st.spinner("Sto calcolando quanto manca..."):
+                try:
+                    ws_ev = db.worksheet("events")
+                    # Leggo B2, C2, D2 in un colpo solo!
+                    dati = ws_ev.get_values("B2:D2")[0]
+                    data_fine_str = dati[0]
+                    evento = dati[1]
+                    percentuale = dati[2]
+                    
+                    data_fine = datetime.strptime(data_fine_str, "%d/%m/%Y")
+                    differenza = (data_fine - datetime.now()).days + 1
+                    
+                    st.session_state.countdown_msg = f"Mancano {differenza} giorni a {evento} ❤️"
+                    update_lamp("COUNTDOWN", str(percentuale))
+                    invia_notifica(f"⏳ Anita ha attivato il Countdown per: {evento}")
+                    st.session_state.view = "COUNTDOWN"
+                    st.rerun()
+                except Exception as e:
+                    st.error("Assicurati di aver configurato il countdown su Telegram!")
 
     with c2:
         if st.button("😤 Stressata"): st.session_state.m_msg = get_frase_emo("Stressata"); st.rerun()
         if st.button("🍂 Nostalgica"): st.session_state.m_msg = get_frase_emo("Nostalgica"); st.rerun()
+        if st.button("🌑 Spegni tutto"):
+            spegni_tutto(); st.session_state.m_msg = ""; st.rerun()
     
     if st.session_state.m_msg:
         st.markdown(f'<div class="message-box">{st.session_state.m_msg}</div>', unsafe_allow_html=True)
-        if st.button("Spegni Lampada 🌑"):
-            spegni_tutto(); st.session_state.m_msg = ""; st.rerun()
         start_auto_off(300)
