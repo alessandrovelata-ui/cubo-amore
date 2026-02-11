@@ -56,13 +56,14 @@ set_style()
 if 'view' not in st.session_state: st.session_state.view = "LANDING"
 db = get_db(); conf = db.worksheet("Config")
 
-# --- LOGICA AUTO-OFF (300 secondi = 5 minuti) ---
-def start_auto_off():
-    st.markdown('<p class="timer-text">La lampada si spegnerà tra 5 minuti...</p>', unsafe_allow_html=True)
+# --- LOGICA AUTO-OFF (Modificata per durata variabile) ---
+def start_auto_off(seconds=300):
+    minuti = seconds // 60
+    st.markdown(f'<p class="timer-text">La lampada si spegnerà tra {minuti} minuti...</p>', unsafe_allow_html=True)
     p = st.progress(0)
-    for i in range(300):
+    for i in range(seconds):
         time.sleep(1)
-        p.progress((i + 1) / 300)
+        p.progress((i + 1) / seconds)
     spegni_tutto()
     st.session_state.view = "MOODS"
     st.rerun()
@@ -97,7 +98,7 @@ elif st.session_state.view == "FIXED":
     st.markdown(f'<div class="message-box">{st.session_state.testo}</div>', unsafe_allow_html=True)
     if st.button("Spegni Lampada 🌑"):
         spegni_tutto(); st.session_state.view = "MOODS"; st.rerun()
-    start_auto_off()
+    start_auto_off(300)
 
 # --- 3. VISTA BUONGIORNO ---
 elif st.session_state.view == "BUONGIORNO":
@@ -105,9 +106,17 @@ elif st.session_state.view == "BUONGIORNO":
     st.markdown(f'<div class="message-box">{st.session_state.testo}</div>', unsafe_allow_html=True)
     if st.button("Spegni e vai alle Emozioni 🌑"): 
         spegni_tutto(); st.session_state.view = "MOODS"; st.rerun()
-    start_auto_off()
+    start_auto_off(300)
 
-# --- 4. VISTA EMOZIONI ---
+# --- 4. NUOVA VISTA: COUNTDOWN ---
+elif st.session_state.view == "COUNTDOWN":
+    st.markdown('<div class="main-title">Manca poco... ⏳</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="message-box">{st.session_state.countdown_msg}</div>', unsafe_allow_html=True)
+    if st.button("Spegni Lampada 🌑"):
+        spegni_tutto(); st.session_state.view = "MOODS"; st.rerun()
+    start_auto_off(900) # Spegnimento dopo 15 minuti
+
+# --- 5. VISTA EMOZIONI ---
 elif st.session_state.view == "MOODS":
     st.markdown('<div class="main-title">Come ti senti oggi? ☁️</div>', unsafe_allow_html=True)
     if 'm_msg' not in st.session_state: st.session_state.m_msg = ""
@@ -115,6 +124,24 @@ elif st.session_state.view == "MOODS":
     with c1:
         if st.button("😢 Triste"): st.session_state.m_msg = get_frase_emo("Triste"); st.rerun()
         if st.button("🥰 Felice"): st.session_state.m_msg = get_frase_emo("Felice"); st.rerun()
+        # AGGIUNTO: Bottone Countdown
+        if st.button("⏳ Countdown"):
+            try:
+                ws_ev = db.worksheet("events")
+                evento = ws_ev.acell('C2').value
+                percentuale = ws_ev.acell('D2').value
+                # Calcolo giorni rimanenti (Data Fine B2 - Oggi)
+                data_fine = datetime.strptime(ws_ev.acell('B2').value, "%d/%m/%Y")
+                giorni_mancanti = (data_fine - datetime.now()).days + 1
+                
+                st.session_state.countdown_msg = f"Mancano {giorni_mancanti} giorni a {evento} ❤️"
+                update_lamp("COUNTDOWN", str(percentuale)) # Passiamo la % alla lampada via B3
+                invia_notifica(f"⏳ Anita ha attivato il Countdown per: {evento}")
+                st.session_state.view = "COUNTDOWN"
+                st.rerun()
+            except:
+                st.error("Errore nel recupero del Countdown. Configuralo prima su Telegram!")
+
     with c2:
         if st.button("😤 Stressata"): st.session_state.m_msg = get_frase_emo("Stressata"); st.rerun()
         if st.button("🍂 Nostalgica"): st.session_state.m_msg = get_frase_emo("Nostalgica"); st.rerun()
@@ -123,4 +150,4 @@ elif st.session_state.view == "MOODS":
         st.markdown(f'<div class="message-box">{st.session_state.m_msg}</div>', unsafe_allow_html=True)
         if st.button("Spegni Lampada 🌑"):
             spegni_tutto(); st.session_state.m_msg = ""; st.rerun()
-        start_auto_off()
+        start_auto_off(300)
