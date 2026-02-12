@@ -11,95 +11,104 @@ SHEET_NAME = "CuboAmoreDB"
 def set_style():
     st.markdown("""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600&family=Playfair+Display:ital,wght@0,700;1,400&family=Montserrat:wght@400;600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700&family=Dancing+Script:wght@600&display=swap');
 
-        /* Sfondo Viola Polvere */
+        /* Sfondo Gradiente Dark come da immagine */
         .stApp { 
-            background-color: #F8F6FA; 
+            background: linear-gradient(180deg, #0F0C29 0%, #20133A 50%, #24243E 100%);
             font-family: 'Montserrat', sans-serif;
+            color: white;
         }
 
-        /* Titolo Elegante */
+        /* Titolo Allineato a Sinistra (Welcome style) */
         .main-title { 
-            color: #4A3B52 !important; 
-            text-align: center; 
-            font-family: 'Playfair Display', serif;
-            font-size: 30px !important; 
+            color: #FFFFFF !important; 
+            text-align: left; 
+            font-size: 28px !important; 
             font-weight: 700; 
-            margin-top: 10px;
-            margin-bottom: 0px;
+            margin-top: 20px;
+            padding-left: 10px;
         }
 
-        /* Cuore Animato */
-        .heart { 
-            font-size: 60px; 
+        /* Card Messaggio (Stile Weather Widget) */
+        .message-box { 
+            background: rgba(255, 255, 255, 0.07); 
+            backdrop-filter: blur(15px);
+            padding: 25px; 
+            border-radius: 25px; 
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            font-family: 'Dancing Script', cursive;
+            font-size: 28px !important; 
+            color: #E0E0E0 !important; 
             text-align: center; 
-            margin: 10px 0; 
-            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.1));
-            animation: pulse 2.5s infinite ease-in-out; 
+            margin: 20px 0;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
+        }
+
+        /* Pulsanti stile "Your Rooms" (Card quadrate e trasparenti) */
+        div.stButton > button { 
+            width: 100%; 
+            border-radius: 22px; 
+            font-weight: 600; 
+            height: 120px; /* Più alti per somigliare alle card dell'immagine */
+            background: rgba(255, 255, 255, 0.05) !important; 
+            color: white !important; 
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            font-size: 18px !important;
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        div.stButton > button:hover {
+            background: rgba(255, 255, 255, 0.12) !important;
+            border: 1px solid rgba(255, 255, 255, 0.3) !important;
+            transform: translateY(-5px);
+        }
+
+        /* Heart animato con glow */
+        .heart { 
+            font-size: 50px; 
+            text-align: center; 
+            margin: 15px 0;
+            filter: drop-shadow(0 0 15px rgba(126, 87, 194, 0.6));
+            animation: pulse 2s infinite ease-in-out;
         }
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
 
-        /* Box Messaggi in Corsivo Elegante */
-        .message-box { 
-            background: #FFFFFF; 
-            padding: 20px; 
-            border-radius: 20px; 
-            border: 1px solid #E0D7E7;
-            box-shadow: 0 10px 25px rgba(103, 58, 183, 0.05);
-            font-family: 'Dancing Script', cursive;
-            font-size: 26px !important; 
-            color: #5E4B72 !important; 
-            text-align: center; 
-            line-height: 1.3;
-            margin: 15px 0;
-        }
-
-        /* Bottoni Mood Professionali */
-        div.stButton > button { 
-            width: 100%; 
-            border-radius: 15px; 
-            font-weight: 600; 
-            height: 55px; 
-            background-color: #7E57C2; 
-            color: white; 
-            border: none; 
-            font-size: 16px !important;
-            transition: all 0.2s ease;
-            box-shadow: 0 4px 12px rgba(126, 87, 194, 0.2);
-        }
-        
-        /* Bottone Spegni Tutto (Piccolo e in basso) */
-        .off-container {
-            text-align: center;
-            margin-top: 30px;
-        }
+        /* Bottone Spegni (Discreto in fondo) */
         .off-container div.stButton > button {
-            background-color: #9E9E9E !important;
-            height: 40px !important;
-            width: 60% !important;
+            background: rgba(255, 75, 75, 0.1) !important;
+            height: 50px !important;
             font-size: 14px !important;
-            opacity: 0.8;
+            margin-top: 20px;
+            border-radius: 15px;
         }
 
         .timer-text { 
             text-align: center; 
-            color: #B2A4BD; 
+            color: rgba(255,255,255,0.4); 
             font-size: 12px; 
-            margin-top: 10px; 
+            margin-top: 15px; 
         }
 
-        /* Emoji Enhancer */
-        .emoji {
-            display: inline-block;
-            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
-            transform: scale(1.2);
-            margin-right: 10px;
-        }
-
-        /* Fix per Mobile: Riduciamo spazi vuoti */
-        .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; }
+        /* Ottimizzazione Mobile */
+        .block-container { padding: 1rem !important; }
         #MainMenu, footer, header {visibility: hidden;}
+
+        /* Effetto cerchio dietro le emoji (simulato) */
+        .stButton button::before {
+            content: '';
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 50%;
+            z-index: -1;
+            top: 20%;
+        }
     </style>
     """, unsafe_allow_html=True)
 
@@ -166,8 +175,8 @@ if st.session_state.view == "MOODS":
 
 # --- 1. LANDING PAGE ---
 if st.session_state.view == "LANDING":
-    st.markdown('<div class="main-title">Ciao Bimba...</div>', unsafe_allow_html=True)
-    st.markdown('<div class="heart">✨💜✨</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">Welcome, Anita</div>', unsafe_allow_html=True)
+    st.markdown('<div class="heart">🌙✨</div>', unsafe_allow_html=True)
     if st.button("Entra nel nostro mondo ❤️"):
         invia_notifica("🔔 Anita è entrata nell'app")
         oggi = datetime.now().strftime("%Y-%m-%d")
@@ -187,7 +196,7 @@ if st.session_state.view == "LANDING":
 
 # --- 2. VISTA PENSIERO (FIXED) ---
 elif st.session_state.view == "FIXED":
-    st.markdown('<div class="main-title">Per te...</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">Dedicato a te...</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="message-box">{st.session_state.testo}</div>', unsafe_allow_html=True)
     if st.button("Vai alle Emozioni ☁️"):
         st.session_state.view = "MOODS"; st.rerun()
@@ -211,15 +220,16 @@ elif st.session_state.view == "COUNTDOWN":
 
 # --- 5. VISTA EMOZIONI ---
 elif st.session_state.view == "MOODS":
-    st.markdown('<div class="main-title">Come ti senti oggi?</div>', unsafe_allow_html=True)
-    st.markdown('<div style="text-align:center; margin-bottom:10px;">☁️✨☁️</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">Your Moods</div>', unsafe_allow_html=True)
+    st.markdown('<div style="color:rgba(255,255,255,0.5); padding-left:10px; margin-bottom:20px;">Scegli come illuminare il cuore</div>', unsafe_allow_html=True)
+    
     if 'm_msg' not in st.session_state: st.session_state.m_msg = ""
     
     c1, c2 = st.columns(2)
     with c1:
-        if st.button("💧 Triste"): st.session_state.m_msg = get_frase_emo("Triste"); st.rerun()
-        if st.button("💖 Felice"): st.session_state.m_msg = get_frase_emo("Felice"); st.rerun()
-        if st.button("⏳ Countdown"):
+        if st.button("💧\nTriste"): st.session_state.m_msg = get_frase_emo("Triste"); st.rerun()
+        if st.button("💖\nFelice"): st.session_state.m_msg = get_frase_emo("Felice"); st.rerun()
+        if st.button("⏳\nCountdown"):
             with st.spinner("Calcolo..."):
                 try:
                     ws_ev = db.worksheet("events")
@@ -234,10 +244,9 @@ elif st.session_state.view == "MOODS":
                 except: st.error("Errore!")
 
     with c2:
-        if st.button("⚡ Stressata"): st.session_state.m_msg = get_frase_emo("Stressata"); st.rerun()
-        if st.button("🌙 Nostalgica"): st.session_state.m_msg = get_frase_emo("Nostalgica"); st.rerun()
+        if st.button("⚡\nStressata"): st.session_state.m_msg = get_frase_emo("Stressata"); st.rerun()
+        if st.button("🌙\nNostalgica"): st.session_state.m_msg = get_frase_emo("Nostalgica"); st.rerun()
     
-    # Bottone Spegni Tutto Piccolo e in basso
     st.markdown('<div class="off-container">', unsafe_allow_html=True)
     if st.button("🌑 Spegni Lampada"):
         spegni_tutto(); st.session_state.m_msg = ""; st.rerun()
