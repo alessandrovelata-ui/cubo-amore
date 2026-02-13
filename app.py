@@ -13,13 +13,11 @@ def set_style():
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600&family=Playfair+Display:ital,wght@0,700;1,400&family=Montserrat:wght@400;600&display=swap');
 
-        /* Sfondo Viola Polvere Originale */
         .stApp { 
             background-color: #F8F6FA; 
             font-family: 'Montserrat', sans-serif;
         }
 
-        /* Titolo Elegante */
         .main-title { 
             color: #4A3B52 !important; 
             text-align: center; 
@@ -27,10 +25,8 @@ def set_style():
             font-size: 30px !important; 
             font-weight: 700; 
             margin-top: 10px;
-            margin-bottom: 0px;
         }
 
-        /* Cuore Animato */
         .heart { 
             font-size: 60px; 
             text-align: center; 
@@ -40,7 +36,6 @@ def set_style():
         }
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
 
-        /* Box Messaggi in Corsivo Elegante */
         .message-box { 
             background: #FFFFFF; 
             padding: 20px; 
@@ -55,7 +50,6 @@ def set_style():
             margin: 15px 0;
         }
 
-        /* Bottoni Mood Professionali */
         div.stButton > button { 
             width: 100%; 
             border-radius: 15px; 
@@ -65,11 +59,9 @@ def set_style():
             color: white; 
             border: none; 
             font-size: 16px !important;
-            transition: all 0.2s ease;
             box-shadow: 0 4px 12px rgba(126, 87, 194, 0.2);
         }
         
-        /* Bottone Spegni (Piccolo e Grigio) */
         .off-container div.stButton > button, .small-btn div.stButton > button {
             background-color: #9E9E9E !important;
             height: 45px !important;
@@ -78,13 +70,7 @@ def set_style():
             box-shadow: none;
         }
 
-        .timer-text { 
-            text-align: center; 
-            color: #B2A4BD; 
-            font-size: 12px; 
-            margin-top: 10px; 
-        }
-
+        .timer-text { text-align: center; color: #B2A4BD; font-size: 12px; margin-top: 10px; }
         .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; }
         #MainMenu, footer, header {visibility: hidden;}
     </style>
@@ -130,7 +116,6 @@ def get_frase_emo(mood):
 st.set_page_config(page_title="Cubo Amore", page_icon="🧸", layout="centered")
 set_style()
 
-# Mostra il feedback dello spegnimento se presente
 if 'feedback' in st.session_state:
     st.toast(st.session_state.feedback, icon="✨")
     del st.session_state.feedback
@@ -150,7 +135,6 @@ def start_auto_off(seconds=300):
     st.session_state.view = "MOODS"
     st.rerun()
 
-# --- LOGICA DASHBOARD ---
 if st.session_state.view == "MOODS":
     try:
         check_status = conf.batch_get(['B1', 'B2', 'B3'])
@@ -194,11 +178,11 @@ elif st.session_state.view == "BUONGIORNO":
     if st.button("Vai alle Emozioni ☁️"): st.session_state.view = "MOODS"; st.rerun()
     start_auto_off(300)
 
+# --- 4. VISTA: COUNTDOWN (SOLO 2 TASTI) ---
 elif st.session_state.view == "COUNTDOWN":
     st.markdown('<div class="main-title">Manca poco...</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="message-box">{st.session_state.countdown_msg}</div>', unsafe_allow_html=True)
     
-    # Doppio tasto orizzontale richiesto
     c1, c2 = st.columns(2)
     with c1:
         st.markdown('<div class="small-btn">', unsafe_allow_html=True)
@@ -211,7 +195,7 @@ elif st.session_state.view == "COUNTDOWN":
     
     start_auto_off(900)
 
-# --- 5. VISTA EMOZIONI ---
+# --- 5. VISTA EMOZIONI (LAYOUT 2x2) ---
 elif st.session_state.view == "MOODS":
     st.markdown('<div class="main-title">Come ti senti oggi?</div>', unsafe_allow_html=True)
     st.markdown('<div style="text-align:center; margin-bottom:10px;">☁️✨☁️</div>', unsafe_allow_html=True)
@@ -221,37 +205,37 @@ elif st.session_state.view == "MOODS":
     c1, c2 = st.columns(2)
     with c1:
         if st.button("💧 Triste"): st.session_state.m_msg = get_frase_emo("Triste"); st.rerun()
-        if st.button("💖 Felice"): st.session_state.m_msg = get_frase_emo("Felice"); st.rerun()
         if st.button("⚡ Stressata"): st.session_state.m_msg = get_frase_emo("Stressata"); st.rerun()
+    with c2:
+        if st.button("💖 Felice"): st.session_state.m_msg = get_frase_emo("Felice"); st.rerun()
         if st.button("🌙 Nostalgica"): st.session_state.m_msg = get_frase_emo("Nostalgica"); st.rerun()
-        
-        if st.button("⏳\nCountdown"):
-            with st.spinner("Calcolo in corso..."):
-                successo = False
-                for tentativo in range(3):
-                    try:
-                        ws_ev = db.worksheet("events")
-                        dati_raw = ws_ev.get_values("B2:D2")
-                        if dati_raw:
-                            dati = dati_raw[0]
-                            data_fine_str = dati[0]; evento = dati[1]; percentuale = dati[2]
-                            data_fine = datetime.strptime(data_fine_str, "%d/%m/%Y")
-                            differenza = (data_fine - datetime.now()).days + 1
-                            st.session_state.countdown_msg = f"Mancano {differenza} giorni a {evento} ❤️"
-                            st.session_state.view = "COUNTDOWN"
-                            update_lamp("COUNTDOWN", str(percentuale))
-                            invia_notifica(f"⏳ Anita ha attivato il Countdown")
-                            successo = True
-                            break 
-                    except Exception:
-                        st.cache_resource.clear() 
-                        time.sleep(0.5) 
-                        continue 
-                if successo: st.rerun()
-                else: st.error("Riprova tra un istante.")
-
     
-    # Spegni Lampada in fondo
+    # Tasto Countdown centrato o in una riga separata
+    if st.button("⏳\nCountdown"):
+        with st.spinner("Calcolo in corso..."):
+            successo = False
+            for tentativo in range(3):
+                try:
+                    ws_ev = db.worksheet("events")
+                    dati_raw = ws_ev.get_values("B2:D2")
+                    if dati_raw:
+                        dati = dati_raw[0]
+                        data_fine_str = dati[0]; evento = dati[1]; percentuale = dati[2]
+                        data_fine = datetime.strptime(data_fine_str, "%d/%m/%Y")
+                        differenza = (data_fine - datetime.now()).days + 1
+                        st.session_state.countdown_msg = f"Mancano {differenza} giorni a {evento} ❤️"
+                        st.session_state.view = "COUNTDOWN"
+                        update_lamp("COUNTDOWN", str(percentuale))
+                        invia_notifica(f"⏳ Anita ha attivato il Countdown")
+                        successo = True
+                        break 
+                except Exception:
+                    st.cache_resource.clear() 
+                    time.sleep(0.5) 
+                    continue 
+            if successo: st.rerun()
+            else: st.error("Riprova tra un istante.")
+
     st.markdown('<div class="off-container">', unsafe_allow_html=True)
     if st.button("🌑 Spegni Lampada"):
         spegni_tutto(); st.session_state.m_msg = ""; st.rerun()
