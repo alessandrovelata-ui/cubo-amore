@@ -116,75 +116,85 @@ if st.session_state.view == "MOODS":
             conf.update_acell('B3', ''); st.rerun()
     except: pass
 
-# --- 1. LANDING ---
+# --- 1. LANDING PAGE ---
 if st.session_state.view == "LANDING":
     st.markdown('<div class="main-title">Ciao Bimba...</div>', unsafe_allow_html=True)
     st.markdown('<div class="heart">✨💜✨</div>', unsafe_allow_html=True)
     if st.button("Entra nel nostro mondo ❤️"):
-        invia_notifica("🔔 Anita è entrata"); oggi = datetime.now().strftime("%Y-%m-%d")
+        invia_notifica("🔔 Anita è entrata")
+        oggi = datetime.now().strftime("%Y-%m-%d")
         status_row = conf.row_values(4); ultimo_log = status_row[1] if len(status_row) > 1 else ""
         if ultimo_log != oggi:
             ws_cal = db.worksheet("Calendario"); df_cal = pd.DataFrame(ws_cal.get_all_records())
             frase = df_cal[df_cal['Data'] == oggi].iloc[0]['Frase'] if not df_cal[df_cal['Data'] == oggi].empty else "Buongiorno! ❤️"
-            st.session_state.testo = frase; conf.update_acell('B4', oggi); update_lamp("BUONGIORNO", frase); st.session_state.view = "BUONGIORNO"; st.rerun()
-        else: st.session_state.view = "MOODS"; st.rerun()
+            st.session_state.testo = frase; conf.update_acell('B4', oggi); update_lamp("BUONGIORNO", frase); st.session_state.view = "BUONGIORNO"
+        else: 
+            st.session_state.view = "MOODS"
+        st.rerun()
 
-# --- 2. FIXED / 3. BUONGIORNO ---
+# --- 2. VISTA FISSA / 3. BUONGIORNO ---
 elif st.session_state.view in ["FIXED", "BUONGIORNO"]:
-    title = "Per te... ❤️" if st.session_state.view == "FIXED" else "Buongiorno Cucciola... ☀️"
-    st.markdown(f'<div class="main-title">{title}</div>', unsafe_allow_html=True)
+    titolo = "Per te... ❤️" if st.session_state.view == "FIXED" else "Buongiorno Cucciola... ☀️"
+    st.markdown(f'<div class="main-title">{titolo}</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="message-box">{st.session_state.testo}</div>', unsafe_allow_html=True)
-    if st.button("Vai alle Emozioni ☁️"): st.session_state.view = "MOODS"; st.rerun()
+    if st.button("Vai alle Emozioni ☁️"): 
+        st.session_state.view = "MOODS"; st.rerun()
     start_auto_off(300)
 
-# --- 4. COUNTDOWN (FIXED LAYOUT) ---
+# --- 4. VISTA COUNTDOWN (SOLO 2 TASTI: Spegni a SX, Emozioni a DX) ---
 elif st.session_state.view == "COUNTDOWN":
     st.markdown('<div class="main-title">Manca poco... ⏳</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="message-box">{st.session_state.countdown_msg}</div>', unsafe_allow_html=True)
     
-    # RIGA BOTTONI PULITA: Spegni (sx) | Emozioni (dx)
-    c1, c2 = st.columns(2)
-    with c1:
+    # Griglia forzata a 2 colonne
+    col_sx, col_dx = st.columns(2)
+    with col_sx:
         st.markdown('<div class="btn-off">', unsafe_allow_html=True)
-        if st.button("🌑 Spegni Lampada", key="off_cd"): spegni_tutto(); st.rerun()
+        if st.button("🌑 Spegni Lampada", key="off_cd"): 
+            spegni_tutto()
+            st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
-    with c2:
-        if st.button("Emozioni ☁️", key="back_cd"): st.session_state.view = "MOODS"; st.rerun()
+    with col_dx:
+        if st.button("Emozioni ☁️", key="back_cd"): 
+            st.session_state.view = "MOODS"
+            st.rerun()
     
     start_auto_off(900)
 
-# --- 5. MOODS (GRID 2x2 + Countdown) ---
+# --- 5. VISTA MOODS (GRID 2x2 + COUNTDOWN SOTTO) ---
 elif st.session_state.view == "MOODS":
     st.markdown('<div class="main-title">Come ti senti oggi?</div>', unsafe_allow_html=True)
-    st.markdown('<div style="text-align:center; margin-bottom:10px;">☁️✨☁️</div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align:center; margin-bottom:15px;">☁️✨☁️</div>', unsafe_allow_html=True)
     
     if 'm_msg' not in st.session_state: st.session_state.m_msg = ""
     
-    col1, col2 = st.columns(2)
-    with col1:
+    # Griglia Moods 2x2
+    m1, m2 = st.columns(2)
+    with m1:
         if st.button("💧 Triste"): st.session_state.m_msg = get_frase_emo("Triste"); st.rerun()
         if st.button("⚡ Stressata"): st.session_state.m_msg = get_frase_emo("Stressata"); st.rerun()
-    with col2:
+    with m2:
         if st.button("💖 Felice"): st.session_state.m_msg = get_frase_emo("Felice"); st.rerun()
         if st.button("🌙 Nostalgica"): st.session_state.m_msg = get_frase_emo("Nostalgica"); st.rerun()
     
-    # Tasto Countdown separato
-    if st.button("⏳ Countdown", key="cd_btn"):
+    # Tasto Countdown separato e centrato
+    st.write("---")
+    if st.button("⏳ Countdown", key="main_cd_btn"):
         with st.spinner("Calcolo..."):
             successo = False
             for tentativo in range(3):
                 try:
                     ws_ev = db.worksheet("events"); dati = ws_ev.get_values("B2:D2")[0]
-                    df_str = dati[0]; ev = dati[1]; perc = dati[2]
-                    diff = (datetime.strptime(df_str, "%d/%m/%Y") - datetime.now()).days + 1
-                    st.session_state.countdown_msg = f"Mancano {diff} giorni a {ev} ❤️"
-                    st.session_state.view = "COUNTDOWN"; update_lamp("COUNTDOWN", str(perc)); invia_notifica("⏳ Countdown attivato"); successo = True; break 
+                    diff = (datetime.strptime(dati[0], "%d/%m/%Y") - datetime.now()).days + 1
+                    st.session_state.countdown_msg = f"Mancano {diff} giorni a {dati[1]} ❤️"
+                    st.session_state.view = "COUNTDOWN"; update_lamp("COUNTDOWN", str(dati[2])); successo = True; break 
                 except: st.cache_resource.clear(); time.sleep(0.5); continue 
             if successo: st.rerun()
-            else: st.error("Riprova!")
 
-    st.markdown('<div class="btn-off" style="text-align:center; margin-top:20px;">', unsafe_allow_html=True)
-    if st.button("🌑 Spegni Lampada", key="off_main"): spegni_tutto(); st.session_state.m_msg = ""; st.rerun()
+    # Spegni Lampada finale
+    st.markdown('<div class="off-container" style="margin-top:20px;">', unsafe_allow_html=True)
+    if st.button("🌑 Spegni Lampada", key="off_main_btn"):
+        spegni_tutto(); st.session_state.m_msg = ""; st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
     
     if st.session_state.m_msg:
