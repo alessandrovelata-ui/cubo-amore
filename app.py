@@ -222,6 +222,8 @@ elif st.session_state.view == "MOODS":
     with c1:
         if st.button("💧 Triste"): st.session_state.m_msg = get_frase_emo("Triste"); st.rerun()
         if st.button("💖 Felice"): st.session_state.m_msg = get_frase_emo("Felice"); st.rerun()
+        if st.button("⚡ Stressata"): st.session_state.m_msg = get_frase_emo("Stressata"); st.rerun()
+        if st.button("🌙 Nostalgica"): st.session_state.m_msg = get_frase_emo("Nostalgica"); st.rerun()
         
         if st.button("⏳\nCountdown"):
             with st.spinner("Calcolo in corso..."):
@@ -248,9 +250,6 @@ elif st.session_state.view == "MOODS":
                 if successo: st.rerun()
                 else: st.error("Riprova tra un istante.")
 
-    with c2:
-        if st.button("⚡ Stressata"): st.session_state.m_msg = get_frase_emo("Stressata"); st.rerun()
-        if st.button("🌙 Nostalgica"): st.session_state.m_msg = get_frase_emo("Nostalgica"); st.rerun()
     
     # Spegni Lampada in fondo
     st.markdown('<div class="off-container">', unsafe_allow_html=True)
