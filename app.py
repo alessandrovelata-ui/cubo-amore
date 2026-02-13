@@ -104,8 +104,6 @@ def set_style():
     """, unsafe_allow_html=True)
 
 @st.cache_resource
-# Aggiunto TTL per evitare il timeout della connessione dopo inattività
-@st.cache_resource(ttl=600)
 def get_db():
     creds_dict = json.loads(st.secrets["GOOGLE_SHEETS_JSON"])
     return gspread.authorize(Credentials.from_service_account_info(creds_dict, scopes=SCOPE)).open(SHEET_NAME)
@@ -221,34 +219,19 @@ elif st.session_state.view == "MOODS":
     with c1:
         if st.button("💧 Triste"): st.session_state.m_msg = get_frase_emo("Triste"); st.rerun()
         if st.button("💖 Felice"): st.session_state.m_msg = get_frase_emo("Felice"); st.rerun()
-        if st.button("⏳\nCountdown"):
-            with st.spinner("Calcolo in corso..."):
-                successo = False
-                for tentativo in range(3): # Prova fino a 3 volte automaticamente
-                    try:
-                        ws_ev = db.worksheet("events")
-                        dati_raw = ws_ev.get_values("B2:D2")
-                        if dati_raw:
-                            dati = dati_raw[0]
-                            data_fine_str = dati[0]; evento = dati[1]; percentuale = dati[2]
-                            data_fine = datetime.strptime(data_fine_str, "%d/%m/%Y")
-                            differenza = (data_fine - datetime.now()).days + 1
-                            
-                            st.session_state.countdown_msg = f"Mancano {differenza} giorni a {evento} ❤️"
-                            st.session_state.view = "COUNTDOWN"
-                            update_lamp("COUNTDOWN", str(percentuale))
-                            invia_notifica(f"⏳ Anita ha attivato il Countdown")
-                            successo = True
-                            break # Se ha successo, esce dal ciclo di tentativi
-                    except Exception:
-                        st.cache_resource.clear() # Pulisce la connessione vecchia
-                        time.sleep(0.5) # Aspetta mezzo secondo prima di riprovare
-                        continue # Torna all'inizio del ciclo e riprova
-                
-                if successo:
-                    st.rerun()
-                else:
-                    st.error("Il database è timido oggi, riprova tra un istante.")
+        if st.button("⏳ Countdown"):
+            with st.spinner("Calcolo..."):
+                try:
+                    ws_ev = db.worksheet("events")
+                    dati = ws_ev.get_values("B2:D2")[0]
+                    data_fine_str = dati[0]; evento = dati[1]; percentuale = dati[2]
+                    data_fine = datetime.strptime(data_fine_str, "%d/%m/%Y")
+                    differenza = (data_fine - datetime.now()).days + 1
+                    st.session_state.countdown_msg = f"Mancano {differenza} giorni a {evento} ❤️"
+                    update_lamp("COUNTDOWN", str(percentuale))
+                    invia_notifica(f"⏳ Anita ha attivato il Countdown")
+                    st.session_state.view = "COUNTDOWN"; st.rerun()
+                except: st.error("Errore!")
 
     with c2:
         if st.button("⚡ Stressata"): st.session_state.m_msg = get_frase_emo("Stressata"); st.rerun()
