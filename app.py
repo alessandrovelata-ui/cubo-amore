@@ -127,15 +127,21 @@ def get_frase_emo(mood):
         invia_notifica(f"Mood: {mood} ☁️\nHa letto: \"{frase}\"")
         return frase
 
+# --- INIZIO APP ---
 st.set_page_config(page_title="Cubo Amore", page_icon="🧸", layout="centered")
 set_style()
+
+# --- FIX: Inizializzazione sicura st.session_state ---
+if 'view' not in st.session_state: st.session_state.view = "LANDING"
+if 'testo' not in st.session_state: st.session_state.testo = ""
+if 'm_msg' not in st.session_state: st.session_state.m_msg = ""
+if 'countdown_msg' not in st.session_state: st.session_state.countdown_msg = ""
 
 # Mostra il feedback dello spegnimento se presente
 if 'feedback' in st.session_state:
     st.toast(st.session_state.feedback, icon="✨")
     del st.session_state.feedback
 
-if 'view' not in st.session_state: st.session_state.view = "LANDING"
 db = get_db()
 conf = db.worksheet("Config")
 
@@ -215,8 +221,6 @@ elif st.session_state.view == "COUNTDOWN":
 elif st.session_state.view == "MOODS":
     st.markdown('<div class="main-title">Come ti senti oggi?</div>', unsafe_allow_html=True)
     st.markdown('<div style="text-align:center; margin-bottom:10px;">☁️✨☁️</div>', unsafe_allow_html=True)
-    
-    if 'm_msg' not in st.session_state: st.session_state.m_msg = ""
     
     c1, c2 = st.columns(2)
     with c1:
