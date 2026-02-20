@@ -174,18 +174,40 @@ if st.session_state.view == "LANDING":
     if st.button("Entra nel nostro mondo ❤️"):
         invia_notifica("🔔 Anita è entrata nell'app")
         oggi = datetime.now().strftime("%Y-%m-%d")
-        status_row = conf.row_values(4)
-        ultimo_log = status_row[1] if len(status_row) > 1 else ""
+        
+        # Leggiamo B4: se è diverso da oggi, procediamo (anche se ha saltato mesi)
+        ultimo_log = conf.acell('B4').value if conf.acell('B4').value else ""
+        
         if ultimo_log != oggi:
-            ws_cal = db.worksheet("Calendario"); df_cal = pd.DataFrame(ws_cal.get_all_records())
-            frase = df_cal[df_cal['Data'] == oggi].iloc[0]['Frase'] if not df_cal[df_cal['Data'] == oggi].empty else "Buongiorno! ❤️"
-            st.session_state.testo = frase
-            conf.update_acell('B4', oggi)
-            update_lamp("BUONGIORNO", frase)
-            st.session_state.view = "BUONGIORNO"
+            # RIGIDITÀ: È un giorno nuovo, carichiamo la sorpresa
+            ws_cal = db.worksheet("Calendario")
+            
+            # get_all_values è "blindato": legge il foglio così com'è, zero inferenze
+            dati_grezzi = ws_cal.get_all_values()
+            
+            # Trasformiamo in DataFrame forzando tutto a "stringa"
+            df_cal = pd.DataFrame(dati_grezzi[1:], columns=dati_grezzi[0]).astype(str)
+            df_cal.columns = df_cal.columns.str.strip()
+            
+            # Cerchiamo la data di oggi
+            match = df_cal[df_cal['Data'] == oggi]
+            
+            if not match.empty:
+                frase = match.iloc[0]['Frase']
+                st.session_state.testo = frase
+                conf.update_acell('B4', oggi)
+                update_lamp("BUONGIORNO", frase)
+                st.session_state.view = "BUONGIORNO"
+            else:
+                # Se oggi non è nel calendario, la mandiamo ai mood senza crashare
+                # (Succede se ti dimentichi di scrivere la riga di oggi)
+                st.session_state.view = "MOODS"
+            
             st.rerun()
         else:
-            st.session_state.view = "MOODS"; st.rerun()
+            # È già entrata oggi
+            st.session_state.view = "MOODS"
+            st.rerun()
 
 # --- VISTE MESSAGGI ---
 elif st.session_state.view == "FIXED":
