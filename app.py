@@ -213,31 +213,66 @@ if st.session_state.view == "LANDING":
 elif st.session_state.view == "FIXED":
     st.markdown('<div class="main-title">Per te...</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="message-box">{st.session_state.testo}</div>', unsafe_allow_html=True)
-    if st.button("Vai alle Emozioni ☁️"): st.session_state.view = "MOODS"; st.rerun()
-    start_auto_off(300)
+    
+    # Creazione di due colonne per i pulsanti orizzontali
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("Emozioni ☁️"):
+            st.session_state.view = "MOODS"
+            st.rerun()
+            
+    with col2:
+        st.markdown('<div class="btn-off">', unsafe_allow_html=True)
+        if st.button("🌑 Spegni"):
+            spegni_tutto()
+            st.session_state.view = "MOODS"
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+   #start_auto_off(300)
 
 elif st.session_state.view == "BUONGIORNO":
     st.markdown('<div class="main-title">Buongiorno Cucciola...</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="message-box">{st.session_state.testo}</div>', unsafe_allow_html=True)
-    if st.button("Vai alle Emozioni ☁️"): st.session_state.view = "MOODS"; st.rerun()
-    start_auto_off(300)
+    
+    # Creazione di due colonne per i pulsanti orizzontali
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("Emozioni ☁️"):
+            st.session_state.view = "MOODS"
+            st.rerun()
+            
+    with col2:
+        st.markdown('<div class="btn-off">', unsafe_allow_html=True)
+        if st.button("🌑 Spegni"):
+            spegni_tutto()
+            st.session_state.view = "MOODS"
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+    #start_auto_off(300)
 
 elif st.session_state.view == "COUNTDOWN":
     st.markdown('<div class="main-title">Manca poco...</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="message-box">{st.session_state.countdown_msg}</div>', unsafe_allow_html=True)
     
-    # Doppio tasto orizzontale richiesto
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown('<div class="small-btn">', unsafe_allow_html=True)
-        if st.button("🌑 Spegni Lampada"):
-            spegni_tutto(); st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-    with c2:
-        if st.button("Emozioni ☁️"):
-            st.session_state.view = "MOODS"; st.rerun()
+    # Creazione di due colonne per i pulsanti orizzontali
+    col1, col2 = st.columns(2)
     
-    start_auto_off(900)
+    with col1:
+        if st.button("Emozioni ☁️"):
+            st.session_state.view = "MOODS"
+            st.rerun()
+            
+    with col2:
+        st.markdown('<div class="btn-off">', unsafe_allow_html=True)
+        if st.button("🌑 Spegni"):
+            spegni_tutto()
+            st.session_state.view = "MOODS"
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    #start_auto_off(900)
 
 # --- 5. VISTA EMOZIONI ---
 elif st.session_state.view == "MOODS":
@@ -286,4 +321,4 @@ elif st.session_state.view == "MOODS":
     
     if st.session_state.m_msg:
         st.markdown(f'<div class="message-box">{st.session_state.m_msg}</div>', unsafe_allow_html=True)
-        start_auto_off(300)
+       # start_auto_off(300)
