@@ -142,6 +142,14 @@ def set_style():
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15) !important;
         }
         
+        .stToast > div {
+            color: #3d2952 !important;
+        }
+        
+        .stToast [data-testid="stMarkdownContainer"] p {
+            color: #3d2952 !important;
+        }
+        
         /* Spinner stile Apple */
         .stSpinner > div {
             border-color: #8B5CF6 !important;
