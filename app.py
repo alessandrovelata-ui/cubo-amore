@@ -437,12 +437,8 @@ elif st.session_state.view == "MOODS":
                     st.session_state.view = "BUONGIORNO"
                     update_lamp("BUONGIORNO", st.session_state.testo)
                     st.rerun()
-                else:
-                    st.session_state.m_msg = "Nessun messaggio del buongiorno per oggi 💜"
-                    st.rerun()
             except:
-                st.session_state.m_msg = "Non riesco a recuperare il messaggio ⚠️"
-                st.rerun()
+                pass
         else:
             st.session_state.m_msg = "Non hai ancora aperto l'app oggi 💜"
             st.rerun()
