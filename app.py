@@ -13,146 +13,162 @@ def set_style():
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600&display=swap');
 
-        /* Stile Apple - SF Pro Display */
+        /* Stile Apple Premium - Sfondo bianco puro */
         .stApp { 
-            background: linear-gradient(135deg, #faf5ff 0%, #e8d5f2 100%);
+            background: #FFFFFF;
             font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
         }
 
-        /* Titolo stile Apple */
+        /* Titolo stile Apple - Più grande e bold */
         .main-title { 
-            color: #3d2952 !important; 
+            color: #1d1d1f !important; 
             text-align: center; 
-            font-size: 32px !important; 
-            font-weight: 600; 
-            letter-spacing: -0.5px;
-            margin-top: 20px;
+            font-size: 34px !important; 
+            font-weight: 700; 
+            letter-spacing: -0.8px;
+            margin-top: 24px;
             margin-bottom: 8px;
         }
 
-        /* Cuore con effetto glassmorphism */
+        /* Cuore più prominente */
         .heart { 
-            font-size: 72px; 
+            font-size: 80px; 
             text-align: center; 
-            margin: 20px 0; 
-            filter: drop-shadow(0 8px 16px rgba(0,0,0,0.12));
+            margin: 24px 0; 
+            filter: drop-shadow(0 4px 12px rgba(139, 92, 246, 0.2));
             animation: pulse 2.5s infinite ease-in-out; 
         }
         @keyframes pulse { 
             0%, 100% { transform: scale(1); } 
-            50% { transform: scale(1.08); } 
+            50% { transform: scale(1.06); } 
         }
 
-        /* Message box con glassmorphism Apple */
+        /* Message box elegante con bordo viola */
         .message-box { 
-            background: rgba(255, 255, 255, 0.85);
-            backdrop-filter: blur(20px) saturate(180%);
-            -webkit-backdrop-filter: blur(20px) saturate(180%);
-            padding: 32px 24px; 
-            border-radius: 20px; 
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08),
-                        0 2px 8px rgba(0, 0, 0, 0.04);
+            background: #FFFFFF;
+            padding: 40px 28px; 
+            border-radius: 24px; 
+            border: 1.5px solid #E9D5FF;
+            box-shadow: 0 20px 40px rgba(139, 92, 246, 0.08),
+                        0 4px 12px rgba(139, 92, 246, 0.04);
             font-family: 'Dancing Script', cursive;
-            font-size: 28px !important; 
-            color: #1d1d1f !important; 
+            font-size: 30px !important; 
+            color: #3d2952 !important; 
             text-align: center; 
-            line-height: 1.4;
-            margin: 24px 0;
+            line-height: 1.5;
+            margin: 28px 0;
         }
 
-        /* Bottoni stile Apple */
+        /* Bottoni stile Apple iOS - Viola elegante */
         div.stButton > button { 
             width: 100%; 
-            border-radius: 12px; 
-            font-weight: 500; 
-            height: 56px; 
-            background: linear-gradient(180deg, #8B5CF6 0%, #7C3AED 100%);
+            border-radius: 14px; 
+            font-weight: 600; 
+            height: 58px; 
+            background: linear-gradient(180deg, #9333EA 0%, #7E22CE 100%);
             color: white; 
             border: none; 
             font-size: 17px !important;
-            letter-spacing: -0.2px;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: 0 4px 16px rgba(139, 92, 246, 0.25);
+            letter-spacing: -0.3px;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 8px 24px rgba(147, 51, 234, 0.3);
+            margin-bottom: 12px;
         }
         
         div.stButton > button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(139, 92, 246, 0.35);
+            transform: translateY(-3px);
+            box-shadow: 0 12px 32px rgba(147, 51, 234, 0.4);
+            background: linear-gradient(180deg, #A855F7 0%, #9333EA 100%);
         }
         
         div.stButton > button:active {
-            transform: translateY(0);
+            transform: translateY(-1px);
         }
         
-        /* Bottone Spegni stile Apple grigio */
+        /* Bottone Spegni stile Apple - Più visibile */
         .off-container div.stButton > button, .small-btn div.stButton > button, .btn-off div.stButton > button {
-            background: rgba(142, 142, 147, 0.12) !important;
-            color: #1d1d1f !important;
-            height: 44px !important;
-            font-size: 15px !important;
-            font-weight: 500;
-            box-shadow: none;
-            border: 0.5px solid rgba(0, 0, 0, 0.04);
+            background: #F3F4F6 !important;
+            color: #6B7280 !important;
+            height: 48px !important;
+            font-size: 16px !important;
+            font-weight: 600;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06) !important;
+            border: 1px solid #E5E7EB !important;
         }
         
         .off-container div.stButton > button:hover, .btn-off div.stButton > button:hover {
-            background: rgba(142, 142, 147, 0.18) !important;
-            transform: translateY(-1px);
+            background: #E5E7EB !important;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
         }
 
         .timer-text { 
             text-align: center; 
-            color: #86868b; 
-            font-size: 13px; 
-            font-weight: 400;
-            margin-top: 12px;
-            letter-spacing: -0.1px;
+            color: #9CA3AF; 
+            font-size: 14px; 
+            font-weight: 500;
+            margin-top: 16px;
+            letter-spacing: -0.2px;
         }
 
-        /* Stile decorativo */
+        /* Stile decorativo - Più delicato */
         .decorative-clouds {
             text-align: center;
-            font-size: 20px;
-            margin: 16px 0;
-            opacity: 0.6;
+            font-size: 24px;
+            margin: 20px 0;
+            opacity: 0.5;
         }
 
-        /* Container principale */
+        /* Container principale - Più arioso */
         .block-container { 
-            padding-top: 2rem !important; 
-            padding-bottom: 2rem !important;
-            max-width: 600px !important;
+            padding-top: 2.5rem !important; 
+            padding-bottom: 2.5rem !important;
+            max-width: 560px !important;
         }
         
         /* Nascondi elementi Streamlit */
         #MainMenu, footer, header {visibility: hidden;}
         
-        /* Progress bar stile Apple */
+        /* Progress bar stile Apple - Viola premium */
         .stProgress > div > div > div > div {
-            background: linear-gradient(90deg, #8B5CF6 0%, #C084FC 100%);
+            background: linear-gradient(90deg, #9333EA 0%, #C084FC 100%);
+            border-radius: 10px;
+            height: 8px;
+        }
+        
+        .stProgress > div > div > div {
+            background-color: #F3F4F6;
             border-radius: 10px;
         }
         
-        /* Toast personalizzato */
+        /* Toast personalizzato - Più elegante */
         .stToast {
-            background: rgba(255, 255, 255, 0.95) !important;
+            background: #FFFFFF !important;
             backdrop-filter: blur(20px);
-            border-radius: 14px !important;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15) !important;
+            border-radius: 16px !important;
+            box-shadow: 0 12px 48px rgba(0, 0, 0, 0.12), 
+                        0 0 0 1px rgba(0, 0, 0, 0.06) !important;
+            border: 1px solid #F3F4F6 !important;
         }
         
         .stToast > div {
-            color: #3d2952 !important;
+            color: #1d1d1f !important;
+            font-weight: 500;
         }
         
         .stToast [data-testid="stMarkdownContainer"] p {
-            color: #3d2952 !important;
+            color: #1d1d1f !important;
+            font-weight: 500;
         }
         
         /* Spinner stile Apple */
         .stSpinner > div {
-            border-color: #8B5CF6 !important;
+            border-color: #9333EA !important;
+        }
+        
+        /* Colonne - Spaziatura migliore */
+        div[data-testid="column"] {
+            padding: 0 6px !important;
         }
     </style>
     """, unsafe_allow_html=True)
