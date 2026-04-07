@@ -11,82 +11,141 @@ SHEET_NAME = "CuboAmoreDB"
 def set_style():
     st.markdown("""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600&family=Playfair+Display:ital,wght@0,700;1,400&family=Montserrat:wght@400;600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600&display=swap');
 
-        /* Sfondo Viola Polvere Originale */
+        /* Stile Apple - SF Pro Display */
         .stApp { 
-            background-color: #F8F6FA; 
-            font-family: 'Montserrat', sans-serif;
+            background: linear-gradient(135deg, #faf5ff 0%, #e8d5f2 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
         }
 
-        /* Titolo Elegante */
+        /* Titolo stile Apple */
         .main-title { 
-            color: #4A3B52 !important; 
+            color: #3d2952 !important; 
             text-align: center; 
-            font-family: 'Playfair Display', serif;
-            font-size: 30px !important; 
-            font-weight: 700; 
-            margin-top: 10px;
-            margin-bottom: 0px;
+            font-size: 32px !important; 
+            font-weight: 600; 
+            letter-spacing: -0.5px;
+            margin-top: 20px;
+            margin-bottom: 8px;
         }
 
-        /* Cuore Animato */
+        /* Cuore con effetto glassmorphism */
         .heart { 
-            font-size: 60px; 
+            font-size: 72px; 
             text-align: center; 
-            margin: 10px 0; 
-            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.1));
+            margin: 20px 0; 
+            filter: drop-shadow(0 8px 16px rgba(0,0,0,0.12));
             animation: pulse 2.5s infinite ease-in-out; 
         }
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
-
-        /* Box Messaggi in Corsivo Elegante */
-        .message-box { 
-            background: #FFFFFF; 
-            padding: 20px; 
-            border-radius: 20px; 
-            border: 1px solid #E0D7E7;
-            box-shadow: 0 10px 25px rgba(103, 58, 183, 0.05);
-            font-family: 'Dancing Script', cursive;
-            font-size: 26px !important; 
-            color: #5E4B72 !important; 
-            text-align: center; 
-            line-height: 1.3;
-            margin: 15px 0;
+        @keyframes pulse { 
+            0%, 100% { transform: scale(1); } 
+            50% { transform: scale(1.08); } 
         }
 
-        /* Bottoni Mood Professionali */
+        /* Message box con glassmorphism Apple */
+        .message-box { 
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            padding: 32px 24px; 
+            border-radius: 20px; 
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08),
+                        0 2px 8px rgba(0, 0, 0, 0.04);
+            font-family: 'Dancing Script', cursive;
+            font-size: 28px !important; 
+            color: #1d1d1f !important; 
+            text-align: center; 
+            line-height: 1.4;
+            margin: 24px 0;
+        }
+
+        /* Bottoni stile Apple */
         div.stButton > button { 
             width: 100%; 
-            border-radius: 15px; 
-            font-weight: 600; 
-            height: 55px; 
-            background-color: #7E57C2; 
+            border-radius: 12px; 
+            font-weight: 500; 
+            height: 56px; 
+            background: linear-gradient(180deg, #8B5CF6 0%, #7C3AED 100%);
             color: white; 
             border: none; 
-            font-size: 16px !important;
-            transition: all 0.2s ease;
-            box-shadow: 0 4px 12px rgba(126, 87, 194, 0.2);
+            font-size: 17px !important;
+            letter-spacing: -0.2px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 16px rgba(139, 92, 246, 0.25);
         }
         
-        /* Bottone Spegni (Piccolo e Grigio) */
-        .off-container div.stButton > button, .small-btn div.stButton > button {
-            background-color: #9E9E9E !important;
-            height: 45px !important;
-            font-size: 14px !important;
-            opacity: 0.9;
+        div.stButton > button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(139, 92, 246, 0.35);
+        }
+        
+        div.stButton > button:active {
+            transform: translateY(0);
+        }
+        
+        /* Bottone Spegni stile Apple grigio */
+        .off-container div.stButton > button, .small-btn div.stButton > button, .btn-off div.stButton > button {
+            background: rgba(142, 142, 147, 0.12) !important;
+            color: #1d1d1f !important;
+            height: 44px !important;
+            font-size: 15px !important;
+            font-weight: 500;
             box-shadow: none;
+            border: 0.5px solid rgba(0, 0, 0, 0.04);
+        }
+        
+        .off-container div.stButton > button:hover, .btn-off div.stButton > button:hover {
+            background: rgba(142, 142, 147, 0.18) !important;
+            transform: translateY(-1px);
         }
 
         .timer-text { 
             text-align: center; 
-            color: #B2A4BD; 
-            font-size: 12px; 
-            margin-top: 10px; 
+            color: #86868b; 
+            font-size: 13px; 
+            font-weight: 400;
+            margin-top: 12px;
+            letter-spacing: -0.1px;
         }
 
-        .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; }
+        /* Stile decorativo */
+        .decorative-clouds {
+            text-align: center;
+            font-size: 20px;
+            margin: 16px 0;
+            opacity: 0.6;
+        }
+
+        /* Container principale */
+        .block-container { 
+            padding-top: 2rem !important; 
+            padding-bottom: 2rem !important;
+            max-width: 600px !important;
+        }
+        
+        /* Nascondi elementi Streamlit */
         #MainMenu, footer, header {visibility: hidden;}
+        
+        /* Progress bar stile Apple */
+        .stProgress > div > div > div > div {
+            background: linear-gradient(90deg, #8B5CF6 0%, #C084FC 100%);
+            border-radius: 10px;
+        }
+        
+        /* Toast personalizzato */
+        .stToast {
+            background: rgba(255, 255, 255, 0.95) !important;
+            backdrop-filter: blur(20px);
+            border-radius: 14px !important;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15) !important;
+        }
+        
+        /* Spinner stile Apple */
+        .stSpinner > div {
+            border-color: #8B5CF6 !important;
+        }
     </style>
     """, unsafe_allow_html=True)
 
@@ -147,7 +206,7 @@ conf = db.worksheet("Config")
 
 def start_auto_off(seconds=300):
     minuti = seconds // 60
-    st.markdown(f'<p class="timer-text">Spegnimento tra {minuti} min...</p>', unsafe_allow_html=True)
+    st.markdown(f'<p class="timer-text">Spegnimento automatico tra {minuti} minuti</p>', unsafe_allow_html=True)
     p = st.progress(0)
     for i in range(seconds):
         time.sleep(1)
@@ -277,7 +336,7 @@ elif st.session_state.view == "COUNTDOWN":
 # --- 5. VISTA EMOZIONI ---
 elif st.session_state.view == "MOODS":
     st.markdown('<div class="main-title">Come ti senti oggi?</div>', unsafe_allow_html=True)
-    st.markdown('<div style="text-align:center; margin-bottom:10px;">☁️✨☁️</div>', unsafe_allow_html=True)
+    st.markdown('<div class="decorative-clouds">☁️✨☁️</div>', unsafe_allow_html=True)
     
     c1, c2 = st.columns(2)
     with c1:
