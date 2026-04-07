@@ -170,6 +170,15 @@ def set_style():
         div[data-testid="column"] {
             padding: 0 6px !important;
         }
+        
+        /* Bottoni grandi centrali per Countdown e Buongiorno */
+        .big-btn div.stButton > button {
+            height: 64px !important;
+            font-size: 18px !important;
+            font-weight: 700;
+            border-radius: 16px;
+            margin-bottom: 16px;
+        }
     </style>
     """, unsafe_allow_html=True)
 
@@ -362,39 +371,85 @@ elif st.session_state.view == "MOODS":
     st.markdown('<div class="main-title">Come ti senti oggi?</div>', unsafe_allow_html=True)
     st.markdown('<div class="decorative-clouds">☁️✨☁️</div>', unsafe_allow_html=True)
     
+    # Prima riga: Triste e Stressata
     c1, c2 = st.columns(2)
     with c1:
         if st.button("💧 Triste"): st.session_state.m_msg = get_frase_emo("Triste"); st.rerun()
-        if st.button("💖 Felice"): st.session_state.m_msg = get_frase_emo("Felice"); st.rerun()
-        
-        if st.button("⏳\nCountdown"):
-            with st.spinner("Calcolo in corso..."):
-                successo = False
-                for tentativo in range(3):
-                    try:
-                        ws_ev = db.worksheet("events")
-                        dati_raw = ws_ev.get_values("B2:D2")
-                        if dati_raw:
-                            dati = dati_raw[0]
-                            data_fine_str = dati[0]; evento = dati[1]; percentuale = dati[2]
-                            data_fine = datetime.strptime(data_fine_str, "%d/%m/%Y")
-                            differenza = (data_fine - datetime.now()).days + 1
-                            st.session_state.countdown_msg = f"Mancano {differenza} giorni a {evento} ❤️"
-                            st.session_state.view = "COUNTDOWN"
-                            update_lamp("COUNTDOWN", str(percentuale))
-                            invia_notifica(f"⏳ Anita ha attivato il Countdown")
-                            successo = True
-                            break 
-                    except Exception:
-                        st.cache_resource.clear() 
-                        time.sleep(0.5) 
-                        continue 
-                if successo: st.rerun()
-                else: st.error("Riprova tra un istante.")
-
     with c2:
         if st.button("⚡ Stressata"): st.session_state.m_msg = get_frase_emo("Stressata"); st.rerun()
+    
+    # Seconda riga: Felice e Nostalgica
+    c3, c4 = st.columns(2)
+    with c3:
+        if st.button("💖 Felice"): st.session_state.m_msg = get_frase_emo("Felice"); st.rerun()
+    with c4:
         if st.button("🌙 Nostalgica"): st.session_state.m_msg = get_frase_emo("Nostalgica"); st.rerun()
+    
+    # Spazio
+    st.markdown('<div style="margin: 20px 0;"></div>', unsafe_allow_html=True)
+    
+    # Bottone Countdown - Centrale e più grande
+    st.markdown('<div class="big-btn">', unsafe_allow_html=True)
+    if st.button("⏳ Countdown"):
+        with st.spinner("Calcolo in corso..."):
+            successo = False
+            for tentativo in range(3):
+                try:
+                    ws_ev = db.worksheet("events")
+                    dati_raw = ws_ev.get_values("B2:D2")
+                    if dati_raw:
+                        dati = dati_raw[0]
+                        data_fine_str = dati[0]; evento = dati[1]; percentuale = dati[2]
+                        data_fine = datetime.strptime(data_fine_str, "%d/%m/%Y")
+                        differenza = (data_fine - datetime.now()).days + 1
+                        st.session_state.countdown_msg = f"Mancano {differenza} giorni a {evento} ❤️"
+                        st.session_state.view = "COUNTDOWN"
+                        update_lamp("COUNTDOWN", str(percentuale))
+                        invia_notifica(f"⏳ Anita ha attivato il Countdown")
+                        successo = True
+                        break 
+                except Exception:
+                    st.cache_resource.clear() 
+                    time.sleep(0.5) 
+                    continue 
+            if successo: st.rerun()
+            else: st.error("Riprova tra un istante.")
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Bottone Buongiorno - Centrale e più grande
+    st.markdown('<div class="big-btn">', unsafe_allow_html=True)
+    if st.button("☀️ Rivedi Buongiorno"):
+        # Recupera la frase del buongiorno di oggi senza rifare l'animazione
+        oggi = datetime.now().strftime("%Y-%m-%d")
+        ultimo_log = conf.acell('B4').value if conf.acell('B4').value else ""
+        
+        if ultimo_log == oggi:
+            # È già entrata oggi, recuperiamo la frase dal calendario
+            try:
+                ws_cal = db.worksheet("Calendario")
+                dati_grezzi = ws_cal.get_all_values()
+                df_cal = pd.DataFrame(dati_grezzi[1:], columns=dati_grezzi[0]).astype(str)
+                df_cal.columns = df_cal.columns.str.strip()
+                match = df_cal[df_cal['Data'] == oggi]
+                
+                if not match.empty:
+                    st.session_state.testo = match.iloc[0]['Frase']
+                    st.session_state.view = "BUONGIORNO"
+                    update_lamp("BUONGIORNO", st.session_state.testo)
+                    st.rerun()
+                else:
+                    st.session_state.m_msg = "Nessun messaggio del buongiorno per oggi 💜"
+                    st.rerun()
+            except:
+                st.session_state.m_msg = "Non riesco a recuperare il messaggio ⚠️"
+                st.rerun()
+        else:
+            st.session_state.m_msg = "Non hai ancora aperto l'app oggi 💜"
+            st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Spazio
+    st.markdown('<div style="margin: 24px 0;"></div>', unsafe_allow_html=True)
     
     # Spegni Lampada in fondo
     st.markdown('<div class="off-container">', unsafe_allow_html=True)
