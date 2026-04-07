@@ -311,8 +311,6 @@ elif st.session_state.view == "FIXED":
     
     with col1:
         if st.button("Emozioni ☁️"):
-            # Forza il refresh della cache per evitare letture stantie di B4
-            st.cache_resource.clear()
             st.session_state.view = "MOODS"
             st.rerun()
             
@@ -334,8 +332,6 @@ elif st.session_state.view == "BUONGIORNO":
     
     with col1:
         if st.button("Emozioni ☁️"):
-            # Forza il refresh della cache per evitare letture stantie di B4
-            st.cache_resource.clear()
             st.session_state.view = "MOODS"
             st.rerun()
             
@@ -357,8 +353,6 @@ elif st.session_state.view == "COUNTDOWN":
     
     with col1:
         if st.button("Emozioni ☁️"):
-            # Forza il refresh della cache per evitare letture stantie di B4
-            st.cache_resource.clear()
             st.session_state.view = "MOODS"
             st.rerun()
             
