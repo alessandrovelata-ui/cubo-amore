@@ -179,6 +179,27 @@ def set_style():
             border-radius: 16px;
             margin-bottom: 16px;
         }
+        
+        /* Date input stile Apple */
+        .stDateInput > div > div > input {
+            border-radius: 12px;
+            border: 1.5px solid #E5E7EB;
+            padding: 12px 16px;
+            font-size: 17px;
+            text-align: center;
+            background: #FFFFFF;
+            color: #1d1d1f;
+            font-weight: 500;
+        }
+        
+        .stDateInput > div > div > input:focus {
+            border-color: #9333EA;
+            box-shadow: 0 0 0 3px rgba(147, 51, 234, 0.1);
+        }
+        
+        .stDateInput label {
+            display: none;
+        }
     </style>
     """, unsafe_allow_html=True)
 
@@ -366,6 +387,77 @@ elif st.session_state.view == "COUNTDOWN":
     
     #start_auto_off(900)
 
+# --- 4. VISTA SELEZIONE DATA BUONGIORNI PASSATI ---
+elif st.session_state.view == "SELECT_DATE":
+    st.markdown('<div class="main-title">Scegli una data</div>', unsafe_allow_html=True)
+    st.markdown('<div class="decorative-clouds">📅💜</div>', unsafe_allow_html=True)
+    
+    # Input data
+    data_selezionata = st.date_input(
+        "Seleziona la data del buongiorno:",
+        value=datetime.now(),
+        format="DD/MM/YYYY",
+        label_visibility="collapsed"
+    )
+    
+    # Bottone per cercare
+    st.markdown('<div class="big-btn">', unsafe_allow_html=True)
+    if st.button("🔍 Cerca Buongiorno"):
+        data_str = data_selezionata.strftime("%Y-%m-%d")
+        
+        try:
+            ws_cal = db.worksheet("Calendario")
+            dati_grezzi = ws_cal.get_all_values()
+            df_cal = pd.DataFrame(dati_grezzi[1:], columns=dati_grezzi[0]).astype(str)
+            df_cal.columns = df_cal.columns.str.strip()
+            match = df_cal[df_cal['Data'] == data_str]
+            
+            if not match.empty:
+                st.session_state.testo = match.iloc[0]['Frase']
+                st.session_state.view = "BUONGIORNO_PASSATO"
+                update_lamp("BUONGIORNO", st.session_state.testo)
+                st.rerun()
+            else:
+                st.session_state.m_msg = f"Nessun buongiorno trovato per il {data_selezionata.strftime('%d/%m/%Y')} 💜"
+                st.rerun()
+        except:
+            st.session_state.m_msg = "Errore nel recuperare il messaggio ⚠️"
+            st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Bottone indietro
+    st.markdown('<div class="off-container" style="margin-top: 20px;">', unsafe_allow_html=True)
+    if st.button("← Torna alle Emozioni"):
+        st.session_state.view = "MOODS"
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Mostra eventuale messaggio di errore
+    if st.session_state.m_msg:
+        st.markdown(f'<div class="message-box">{st.session_state.m_msg}</div>', unsafe_allow_html=True)
+        st.session_state.m_msg = ""
+
+# --- 6. VISTA BUONGIORNO PASSATO ---
+elif st.session_state.view == "BUONGIORNO_PASSATO":
+    st.markdown('<div class="main-title">Un dolce ricordo...</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="message-box">{st.session_state.testo}</div>', unsafe_allow_html=True)
+    
+    # Creazione di due colonne per i pulsanti orizzontali
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("Emozioni ☁️"):
+            st.session_state.view = "MOODS"
+            st.rerun()
+            
+    with col2:
+        st.markdown('<div class="btn-off">', unsafe_allow_html=True)
+        if st.button("🌑 Spegni"):
+            spegni_tutto()
+            st.session_state.view = "MOODS"
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
 # --- 5. VISTA EMOZIONI ---
 elif st.session_state.view == "MOODS":
     st.markdown('<div class="main-title">Come ti senti oggi?</div>', unsafe_allow_html=True)
@@ -434,8 +526,6 @@ elif st.session_state.view == "MOODS":
                 
                 if not match.empty:
                     st.session_state.testo = match.iloc[0]['Frase']
-                    # Assicuriamoci che B4 rimanga sulla data di oggi
-                    conf.update_acell('B4', oggi)
                     st.session_state.view = "BUONGIORNO"
                     update_lamp("BUONGIORNO", st.session_state.testo)
                     st.rerun()
@@ -444,6 +534,13 @@ elif st.session_state.view == "MOODS":
         else:
             st.session_state.m_msg = "Non hai ancora aperto l'app oggi 💜"
             st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Bottone Buongiorni Passati - Centrale e più grande
+    st.markdown('<div class="big-btn">', unsafe_allow_html=True)
+    if st.button("📅 Buongiorni Passati"):
+        st.session_state.view = "SELECT_DATE"
+        st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
     
     # Spazio
