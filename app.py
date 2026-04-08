@@ -227,7 +227,7 @@ def spegni_tutto():
         invia_notifica("🌑 La lampada si è spenta.")
         st.session_state.feedback = "Comando ricevuto: Lampada spenta! 🌑"
     except:
-        st.session_state.feedback = "Errore di connessione ⚠️"
+        pass
 
 def get_frase_emo(mood):
     with st.spinner("Cerco un pensiero per te..."):
@@ -421,7 +421,6 @@ elif st.session_state.view == "SELECT_DATE":
                 st.session_state.m_msg = f"Nessun buongiorno trovato per il {data_selezionata.strftime('%d/%m/%Y')} 💜"
                 st.rerun()
         except:
-            st.session_state.m_msg = "Errore nel recuperare il messaggio ⚠️"
             st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
     
@@ -505,7 +504,6 @@ elif st.session_state.view == "MOODS":
                     time.sleep(0.5) 
                     continue 
             if successo: st.rerun()
-            else: st.error("Riprova tra un istante.")
     st.markdown('</div>', unsafe_allow_html=True)
     
     # Bottone Buongiorno - Centrale e più grande
@@ -554,4 +552,4 @@ elif st.session_state.view == "MOODS":
     
     if st.session_state.m_msg:
         st.markdown(f'<div class="message-box">{st.session_state.m_msg}</div>', unsafe_allow_html=True)
-       # start_auto_off(300)
+        # start_auto_off(300) mi cancelli i messaggi di errore superflui? lascia il resto identico
