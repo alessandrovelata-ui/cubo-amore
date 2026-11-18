@@ -258,6 +258,13 @@ def get_frase_emo(mood):
         cand = df[(df['Mood'].str.contains(mood, case=False)) & (df['Marker'] == 'AVAILABLE')]
         frase = cand.iloc[0]['Frase'] if not cand.empty else "Sei speciale! ❤️"
         if not cand.empty: ws.update_cell(cand.index[0] + 2, 4, 'USED')
+        # Registra l'emozione scelta nel Log_Mood (usato dalle statistiche del bot).
+        # In un try: se il foglio non risponde, Anita non deve vedere errori.
+        try:
+            adesso = datetime.now()
+            db.worksheet("Log_Mood").append_row([adesso.strftime("%Y-%m-%d"), adesso.strftime("%H:%M:%S"), mood])
+        except Exception:
+            pass
         update_lamp(mood, frase)
         invia_notifica(f"Mood: {mood} ☁️\nHa letto: \"{frase}\"")
         return frase
