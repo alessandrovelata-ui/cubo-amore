@@ -3,7 +3,7 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 import json, requests, time, html
-from datetime import datetime
+from datetime import datetime, date
 
 SCOPE = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 SHEET_NAME = "CuboAmoreDB"
@@ -251,6 +251,49 @@ def spegni_tutto():
     except:
         pass
 
+# Buongiorno senza data (messaggi veri di Ale): si usano se per oggi non c'e' una riga nel Calendario,
+# cosi' al primo ingresso del giorno Anita vede sempre un Buongiorno.
+BUONGIORNO_NEUTRI = [
+    "Buongiorno Bimba, un giorno con te è un gran giorno!",
+    "Buongiorno Tata, oggi ti mando un abbraccio virtuale pieno d'amore!",
+    "Buongiorno amore mio, anche se lontani, il mio cuore è sempre con te.",
+    "Sei la prima cosa a cui penso la mattina e l'ultima prima di dormire. Buongiorno amore.",
+    "Buongiorno Cucciola, un altro giorno per amarti e pensarti.",
+]
+
+def parse_data(testo):
+    """Legge una data scritta come 2026-11-18 oppure 18/11/2026 (il foglio puo' cambiare il formato)."""
+    testo = str(testo or "").strip()
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(testo, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+def aperta_oggi(conf):
+    """True se Anita e' gia' entrata oggi (Config!B4 contiene la data di oggi)."""
+    try:
+        return parse_data(conf.acell('B4').value) == date.today()
+    except Exception:
+        return False
+
+def segna_aperta_oggi(conf):
+    try:
+        conf.update(range_name='B4', values=[[date.today().isoformat()]], value_input_option='RAW')
+    except Exception:
+        pass
+
+def buongiorno_di_oggi(db):
+    """Frase del Calendario per oggi; se manca, una frase neutra (la stessa per tutto il giorno)."""
+    try:
+        for r in db.worksheet("Calendario").get_all_values()[1:]:
+            if len(r) > 2 and parse_data(r[0]) == date.today() and r[2].strip():
+                return r[2].strip()
+    except Exception:
+        pass
+    return BUONGIORNO_NEUTRI[date.today().toordinal() % len(BUONGIORNO_NEUTRI)]
+
 def get_frase_emo(mood):
     with st.spinner("Cerco un pensiero per te..."):
         db = get_db(); ws = db.worksheet("Emozioni")
@@ -268,6 +311,12 @@ def get_frase_emo(mood):
         update_lamp(mood, frase)
         invia_notifica(f"Mood: {mood} ☁️\nHa letto: \"{frase}\"")
         return frase
+
+def mostra_emozione(mood):
+    """Cerca la frase e la mostra in una schermata grande (come Buongiorno e Countdown)."""
+    st.session_state.testo = get_frase_emo(mood)
+    st.session_state.view = "EMOZIONE"
+    st.rerun()
 
 # --- INIZIO APP ---
 st.set_page_config(page_title="Cubo Amore", page_icon="🧸", layout="centered")
@@ -315,43 +364,37 @@ if st.session_state.view == "LANDING":
     st.markdown('<div class="heart">✨💜✨</div>', unsafe_allow_html=True)
     if st.button("Entra nel nostro mondo ❤️"):
         invia_notifica("🔔 Anita è entrata nell'app")
-        oggi = datetime.now().strftime("%Y-%m-%d")
-        
-        # Leggiamo B4: se è diverso da oggi, procediamo (anche se ha saltato mesi)
-        ultimo_log = conf.acell('B4').value if conf.acell('B4').value else ""
-        
-        if ultimo_log != oggi:
-            # RIGIDITÀ: È un giorno nuovo, carichiamo la sorpresa
-            ws_cal = db.worksheet("Calendario")
-            
-            # get_all_values è "blindato": legge il foglio così com'è, zero inferenze
-            dati_grezzi = ws_cal.get_all_values()
-            
-            # Trasformiamo in DataFrame forzando tutto a "stringa"
-            df_cal = pd.DataFrame(dati_grezzi[1:], columns=dati_grezzi[0]).astype(str)
-            df_cal.columns = df_cal.columns.str.strip()
-            
-            # Cerchiamo la data di oggi
-            match = df_cal[df_cal['Data'] == oggi]
-            
-            if not match.empty:
-                frase = match.iloc[0]['Frase']
-                st.session_state.testo = frase
-                conf.update_acell('B4', oggi)
-                update_lamp("BUONGIORNO", frase)
-                st.session_state.view = "BUONGIORNO"
-            else:
-                # Se oggi non è nel calendario, la mandiamo ai mood senza crashare
-                # (Succede se ti dimentichi di scrivere la riga di oggi)
-                st.session_state.view = "MOODS"
-            
-            st.rerun()
+        if not aperta_oggi(conf):
+            # Primo ingresso del giorno: vede sempre il Buongiorno.
+            # Se oggi non c'e' nel Calendario, buongiorno_di_oggi usa una frase neutra.
+            frase = buongiorno_di_oggi(db)
+            st.session_state.testo = frase
+            segna_aperta_oggi(conf)
+            update_lamp("BUONGIORNO", frase)
+            st.session_state.view = "BUONGIORNO"
         else:
             # È già entrata oggi
             st.session_state.view = "MOODS"
-            st.rerun()
+        st.rerun()
 
 # --- VISTE MESSAGGI ---
+elif st.session_state.view == "EMOZIONE":
+    st.markdown('<div class="main-title">Per te...</div>', unsafe_allow_html=True)
+    render_msg(st.session_state.testo)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Emozioni ☁️"):
+            st.session_state.view = "MOODS"
+            st.rerun()
+    with col2:
+        st.markdown('<div class="btn-off">', unsafe_allow_html=True)
+        if st.button("🌑 Spegni"):
+            spegni_tutto()
+            st.session_state.view = "MOODS"
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
 elif st.session_state.view == "FIXED":
     st.markdown('<div class="main-title">Per te...</div>', unsafe_allow_html=True)
     render_msg(st.session_state.testo)
@@ -494,16 +537,16 @@ elif st.session_state.view == "MOODS":
     # Prima riga: Triste e Stressata
     c1, c2 = st.columns(2)
     with c1:
-        if st.button("💧 Triste"): st.session_state.m_msg = get_frase_emo("Triste"); st.rerun()
+        if st.button("💧 Triste"): mostra_emozione("Triste")
     with c2:
-        if st.button("⚡ Stressata"): st.session_state.m_msg = get_frase_emo("Stressata"); st.rerun()
+        if st.button("⚡ Stressata"): mostra_emozione("Stressata")
     
     # Seconda riga: Felice e Nostalgica
     c3, c4 = st.columns(2)
     with c3:
-        if st.button("💖 Felice"): st.session_state.m_msg = get_frase_emo("Felice"); st.rerun()
+        if st.button("💖 Felice"): mostra_emozione("Felice")
     with c4:
-        if st.button("🌙 Nostalgica"): st.session_state.m_msg = get_frase_emo("Nostalgica"); st.rerun()
+        if st.button("🌙 Nostalgica"): mostra_emozione("Nostalgica")
     
     # Spazio
     st.markdown('<div style="margin: 20px 0;"></div>', unsafe_allow_html=True)
@@ -538,29 +581,11 @@ elif st.session_state.view == "MOODS":
     # Bottone Buongiorno - Centrale e più grande
     st.markdown('<div class="big-btn">', unsafe_allow_html=True)
     if st.button("☀️ Rivedi Buongiorno"):
-        # Recupera la frase del buongiorno di oggi senza rifare l'animazione
-        oggi = datetime.now().strftime("%Y-%m-%d")
-        ultimo_log = conf.acell('B4').value if conf.acell('B4').value else ""
-        
-        if ultimo_log == oggi:
-            # È già entrata oggi, recuperiamo la frase dal calendario
-            try:
-                ws_cal = db.worksheet("Calendario")
-                dati_grezzi = ws_cal.get_all_values()
-                df_cal = pd.DataFrame(dati_grezzi[1:], columns=dati_grezzi[0]).astype(str)
-                df_cal.columns = df_cal.columns.str.strip()
-                match = df_cal[df_cal['Data'] == oggi]
-                
-                if not match.empty:
-                    st.session_state.testo = match.iloc[0]['Frase']
-                    st.session_state.view = "BUONGIORNO"
-                    update_lamp("BUONGIORNO", st.session_state.testo)
-                    st.rerun()
-            except:
-                pass
-        else:
-            st.session_state.m_msg = "Non hai ancora aperto l'app oggi 💜"
-            st.rerun()
+        # Rivede il buongiorno di oggi (stessa frase del primo ingresso)
+        st.session_state.testo = buongiorno_di_oggi(db)
+        st.session_state.view = "BUONGIORNO"
+        update_lamp("BUONGIORNO", st.session_state.testo)
+        st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
     
     # Bottone Buongiorni Passati - Centrale e più grande
